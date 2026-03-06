@@ -31,7 +31,7 @@ The target is theme-based classification (not discipline-based), such as RCT, sy
 ## Open-Source Info
 
 - License: MIT (see [LICENSE](LICENSE))
-- Participant: `GuotuanWang` (see [CONTRIBUTORS.md](CONTRIBUTORS.md))
+- Contributor: [GuotuanWaang](https://github.com/GuotuanWaang) (see [CONTRIBUTORS.md](CONTRIBUTORS.md))
 
 ## Editions and Packages
 

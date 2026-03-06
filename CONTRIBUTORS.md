@@ -1,3 +1,3 @@
 # Contributors
 
-- GuotuanWang - Participant
+- [GuotuanWaang](https://github.com/GuotuanWaang) - Contributor
