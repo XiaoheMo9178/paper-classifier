@@ -31,7 +31,7 @@ Paper Classifier 是一个 Zotero Bootstrap 插件，面向需要批量整理文
 ## 开源信息
 
 - 许可证：MIT（见 [LICENSE](LICENSE)）
-- 参与者：见 [CONTRIBUTORS.md](CONTRIBUTORS.md)
+- 参与者：`GuotuanWang`（见 [CONTRIBUTORS.md](CONTRIBUTORS.md)）
 
 ## 版本与安装包
 
