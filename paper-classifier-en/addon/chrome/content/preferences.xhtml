@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <title>Paper Classifier EN Settings</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #d1d5db;
+      --accent: #0b61a4;
+      --accent-hover: #084d83;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-width: 560px;
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px 18px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: 17px;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 10px 12px;
+      align-items: center;
+    }
+
+    label {
+      justify-self: end;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 13px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .radio-wrap {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      min-height: 34px;
+    }
+
+    .radio-wrap label {
+      justify-self: start;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .hint {
+      grid-column: 2;
+      margin-top: -4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .test-row {
+      grid-column: 2;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .status {
+      font-size: 12px;
+      min-height: 16px;
+    }
+
+    .status.ok {
+      color: #166534;
+    }
+
+    .status.fail {
+      color: #b91c1c;
+    }
+
+    .actions {
+      margin-top: 18px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      background: #fff;
+      color: var(--text);
+    }
+
+    button:hover {
+      background: #f1f5f9;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Paper Classifier EN Settings</h1>
+    <div class="grid">
+      <label for="apiKey">API Key</label>
+      <input id="apiKey" type="password" autocomplete="off" />
+
+      <label for="model">Model</label>
+      <select id="model">
+        <option value="deepseek-chat">deepseek-chat</option>
+        <option value="deepseek-reasoner">deepseek-reasoner</option>
+      </select>
+
+      <label for="outputField">Output Mode</label>
+      <div id="outputField" class="radio-wrap">
+        <label><input type="radio" name="outputField" value="tag" /> Add as tag (tag)</label>
+        <label><input type="radio" name="outputField" value="extra" /> Write to Extra field</label>
+      </div>
+
+      <label></label>
+      <div class="test-row">
+        <button id="testConnectionBtn" type="button">Test Connection</button>
+        <span id="testStatus" class="status"></span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="cancelBtn" type="button">Cancel</button>
+      <button id="saveBtn" type="button" class="primary">Save</button>
+    </div>
+  </div>
+
+  <script><![CDATA[
+    Components.utils.import("resource://gre/modules/Services.jsm");
+
+    const PREFIX = "extensions.paper-classifier-en.";
+    const DEFAULT_ENDPOINT = "https://api.deepseek.com";
+
+    function getZoteroObject() {
+      if (typeof Zotero !== "undefined") {
+        return Zotero;
+      }
+      if (window.opener && window.opener.Zotero) {
+        return window.opener.Zotero;
+      }
+      const recent = Services.wm.getMostRecentWindow("navigator:browser");
+      return recent && recent.Zotero ? recent.Zotero : null;
+    }
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function getPref(z, key, fallbackValue) {
+      const fullKey = PREFIX + key;
+      let value = null;
+
+      try {
+        value = z.Prefs.get(fullKey, true);
+      } catch (e) {}
+
+      if (value !== null && value !== undefined && String(value) !== "") {
+        return value;
+      }
+
+      // Compatibility fallback for legacy incorrectly scoped key
+      try {
+        const legacyValue = z.Prefs.get(fullKey);
+        if (legacyValue !== null && legacyValue !== undefined && String(legacyValue) !== "") {
+          z.Prefs.set(fullKey, legacyValue, true);
+          return legacyValue;
+        }
+      } catch (e) {}
+
+      return fallbackValue;
+    }
+
+    function setPref(z, key, value) {
+      z.Prefs.set(PREFIX + key, value, true);
+    }
+
+    function readPrefs() {
+      const z = getZoteroObject();
+      if (!z) {
+        throw new Error("Unable to access Zotero object");
+      }
+
+      $("apiKey").value = getPref(z, "apiKey", "");
+      $("model").value = getPref(z, "model", "deepseek-chat");
+
+      const output = getPref(z, "outputField", "tag");
+      const radio = document.querySelector('input[name="outputField"][value="' + output + '"]') || document.querySelector('input[name="outputField"][value="tag"]');
+      if (radio) {
+        radio.checked = true;
+      }
+
+      setPref(z, "apiEndpoint", DEFAULT_ENDPOINT);
+    }
+
+    function savePrefs() {
+      const z = getZoteroObject();
+      if (!z) {
+        Services.prompt.alert(window, "Paper Classifier EN", "Unable to access Zotero object, save failed");
+        return;
+      }
+
+      const apiKey = $("apiKey").value.trim();
+      const model = $("model").value;
+      const outputFieldEl = document.querySelector('input[name="outputField"]:checked');
+      const outputField = outputFieldEl ? outputFieldEl.value : "tag";
+
+      setPref(z, "apiKey", apiKey);
+      setPref(z, "apiEndpoint", DEFAULT_ENDPOINT);
+      setPref(z, "model", model);
+      setPref(z, "outputField", outputField);
+
+      window.close();
+    }
+
+    async function testConnection() {
+      const statusEl = $("testStatus");
+      const btn = $("testConnectionBtn");
+
+      const apiKey = $("apiKey").value.trim();
+      const endpoint = DEFAULT_ENDPOINT.replace(/\/+$/, "");
+      const model = $("model").value || "deepseek-chat";
+
+      if (!apiKey) {
+        statusEl.textContent = "Please enter API Key first";
+        statusEl.className = "status fail";
+        return;
+      }
+
+      btn.disabled = true;
+      statusEl.textContent = "Testing...";
+      statusEl.className = "status";
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", endpoint + "/v1/chat/completions", true);
+      xhr.timeout = 15000;
+      xhr.setRequestHeader("Content-Type", "application/json");
+      xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
+
+      xhr.onload = function () {
+        btn.disabled = false;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          statusEl.textContent = "Connection successful";
+          statusEl.className = "status ok";
+        } else {
+          let errText = "HTTP " + xhr.status;
+          try {
+            const data = JSON.parse(xhr.responseText || "{}");
+            if (data && data.error && data.error.message) {
+              errText += " - " + data.error.message;
+            }
+          } catch (e) {}
+          statusEl.textContent = "Connection failed: " + errText;
+          statusEl.className = "status fail";
+        }
+      };
+
+      xhr.onerror = function () {
+        btn.disabled = false;
+        statusEl.textContent = "Connection failed: Network error";
+        statusEl.className = "status fail";
+      };
+
+      xhr.ontimeout = function () {
+        btn.disabled = false;
+        statusEl.textContent = "Connection failed: Request timed out (15s)";
+        statusEl.className = "status fail";
+      };
+
+      xhr.send(JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: "user",
+            content: "Please reply: ok"
+          }
+        ],
+        max_tokens: 5,
+        temperature: 0,
+        stream: false
+      }));
+    }
+
+    window.addEventListener("load", function () {
+      try {
+        readPrefs();
+      } catch (error) {
+        Services.prompt.alert(window, "Paper Classifier EN", "Failed to load settings: " + error.message);
+      }
+
+      $("saveBtn").addEventListener("click", savePrefs);
+      $("cancelBtn").addEventListener("click", function () {
+        window.close();
+      });
+      $("testConnectionBtn").addEventListener("click", testConnection);
+    });
+  ]]></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<groupbox
+  id="paper-classifier-en-prefpane-main"
+  onload="if (Zotero &amp;&amp; Zotero.PaperClassifierEN) { Zotero.PaperClassifierEN.onPreferencePaneLoad(window); }"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+>
+  <description style="margin-bottom: 10px;">
+    Configure DeepSeek API here. The plugin will auto-route items by research theme.
+  </description>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="API Key" style="min-width: 130px;" />
+    <html:input
+      id="paper-classifier-pref-apiKey"
+      type="password"
+      style="flex: 1; min-height: 28px; padding: 4px 8px;"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="Model" style="min-width: 130px;" />
+    <menulist
+      id="paper-classifier-pref-model"
+      flex="1"
+    >
+      <menupopup>
+        <menuitem value="deepseek-chat" label="deepseek-chat" />
+        <menuitem value="deepseek-reasoner" label="deepseek-reasoner" />
+      </menupopup>
+    </menulist>
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="Collection Root" style="min-width: 130px;" />
+    <html:input
+      id="paper-classifier-pref-collectionRoot"
+      type="text"
+      style="flex: 1; min-height: 28px; padding: 4px 8px;"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="Routing Mode" style="min-width: 130px;" />
+    <checkbox
+      id="paper-classifier-pref-keepOriginalCollections"
+      label="Keep existing collections (append to target secondary folder)"
+      native="true"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 6px 0;">
+    <label value="" style="min-width: 130px;" />
+    <button
+      id="paper-classifier-pref-test"
+      label="Validate API Key"
+      oncommand="if (Zotero &amp;&amp; Zotero.PaperClassifierEN) { Zotero.PaperClassifierEN.testPreferenceConnection(window); }"
+    />
+    <label id="paper-classifier-pref-test-status" value="" style="margin-left: 8px;" />
+  </hbox>
+
+  <separator class="thin" style="margin: 8px 0;" />
+
+  <description style="opacity: 0.85;">
+    Run "AI Classify Papers" to auto-create and route into Root/Primary Theme/Secondary Theme.
+  </description>
+</groupbox>

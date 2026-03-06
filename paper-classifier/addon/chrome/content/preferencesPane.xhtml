@@ -1,0 +1,65 @@
+<groupbox
+  id="paper-classifier-prefpane-main"
+  onload="if (Zotero &amp;&amp; Zotero.PaperClassifier) { Zotero.PaperClassifier.onPreferencePaneLoad(window); }"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+>
+  <description style="margin-bottom: 10px;">
+    在此直接配置 DeepSeek API。插件会按“研究主题”自动归档，修改会自动保存。
+  </description>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="API Key" style="min-width: 130px;" />
+    <html:input
+      id="paper-classifier-pref-apiKey"
+      type="password"
+      style="flex: 1; min-height: 28px; padding: 4px 8px;"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="模型" style="min-width: 130px;" />
+    <menulist
+      id="paper-classifier-pref-model"
+      flex="1"
+    >
+      <menupopup>
+        <menuitem value="deepseek-chat" label="deepseek-chat" />
+        <menuitem value="deepseek-reasoner" label="deepseek-reasoner" />
+      </menupopup>
+    </menulist>
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="分类根目录" style="min-width: 130px;" />
+    <html:input
+      id="paper-classifier-pref-collectionRoot"
+      type="text"
+      style="flex: 1; min-height: 28px; padding: 4px 8px;"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 4px 0;">
+    <label value="归档方式" style="min-width: 130px;" />
+    <checkbox
+      id="paper-classifier-pref-keepOriginalCollections"
+      label="保留原有分类（仅追加到目标二级目录）"
+      native="true"
+    />
+  </hbox>
+
+  <hbox align="center" style="margin: 6px 0;">
+    <label value="" style="min-width: 130px;" />
+    <button
+      id="paper-classifier-pref-test"
+      label="验证 API Key"
+      oncommand="if (Zotero &amp;&amp; Zotero.PaperClassifier) { Zotero.PaperClassifier.testPreferenceConnection(window); }"
+    />
+    <label id="paper-classifier-pref-test-status" value="" style="margin-left: 8px;" />
+  </hbox>
+
+  <separator class="thin" style="margin: 8px 0;" />
+
+  <description style="opacity: 0.85;">
+    执行“AI 分类论文”后将按“主题根目录/一级主题/二级主题”自动创建并归档文献。
+  </description>
+</groupbox>

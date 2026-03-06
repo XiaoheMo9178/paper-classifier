@@ -1,0 +1,3 @@
+paper-classifier-menu-label = AI 分类论文
+paper-classifier-settings-label = Paper Classifier Settings...
+paper-classifier-window-title = Paper Classifier
