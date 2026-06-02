@@ -7,6 +7,11 @@
  * @param {string} model
  * @returns {Promise<string>}
  */
+var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_CHAT_PATH = "/chat/completions";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
+
 async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error("API Key is required");
@@ -16,9 +21,9 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   }
 
   const trimmedApiKey = apiKey.trim();
-  const baseEndpoint = (endpoint || "https://api.deepseek.com").trim().replace(/\/+$/, "");
-  const requestedModel = (model || "deepseek-chat").trim();
-  const url = baseEndpoint + "/v1/chat/completions";
+  const baseEndpoint = (endpoint || PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_ENDPOINT).trim().replace(/\/+$/, "");
+  const requestedModel = normalizeDeepSeekModel(model);
+  const url = baseEndpoint + PAPER_CLASSIFIER_EN_DEEPSEEK_CHAT_PATH;
 
   const buildBody = function (targetModel) {
     return {
@@ -26,16 +31,17 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
       messages: [
         {
           role: "system",
-          content: "You are an expert in classifying research papers by research theme (not by discipline). Classify using study design, evidence type, objective, and core question. Typical themes include randomized controlled trial, systematic review, meta-analysis, theoretical research, scale development and validation, mechanism study, intervention study, etc., and you may create better-fit theme names when needed. Output only the classification with no explanation. Output format must be exactly: Primary Theme/Secondary Theme. If information is insufficient, output: Other/Uncertain."
+          content: buildFocusedTaxonomyPrompt()
         },
         {
           role: "user",
-          content: "Paper title: " + title + "\n\nAbstract: " + (abstract || "")
+          content: "Classify the following paper and return only JSON.\n\nPaper title: " + title + "\n\nAbstract: " + (abstract || "")
         }
       ],
-      // Reasoner may return empty final content with low output budget
-      max_tokens: 128,
-      temperature: 0.1,
+      thinking: { type: "disabled" },
+      response_format: { type: "json_object" },
+      max_tokens: 160,
+      temperature: 0,
       stream: false
     };
   };
@@ -43,12 +49,16 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   let parsed = await requestCompletion(url, trimmedApiKey, buildBody(requestedModel));
   let classification = extractClassification(parsed);
 
-  // Compatibility fallback for deepseek-reasoner empty content
-  if (!classification && requestedModel === "deepseek-reasoner") {
+  // Retry once with the other V4 model if the short classification is empty.
+  if (!classification) {
+    const fallbackModel =
+      requestedModel === PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL
+        ? PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL
+        : PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL;
     if (typeof Zotero !== "undefined" && Zotero && typeof Zotero.debug === "function") {
-      Zotero.debug("[PaperClassifier] deepseek-reasoner returned empty content, fallback to deepseek-chat");
+      Zotero.debug("[PaperClassifier] " + requestedModel + " returned empty classification, fallback to " + fallbackModel);
     }
-    parsed = await requestCompletion(url, trimmedApiKey, buildBody("deepseek-chat"));
+    parsed = await requestCompletion(url, trimmedApiKey, buildBody(fallbackModel));
     classification = extractClassification(parsed);
   }
 
@@ -64,6 +74,41 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   }
 
   return classification;
+}
+
+function normalizeDeepSeekModel(model) {
+  const raw = String(model || "").trim();
+  const normalized = raw.toLowerCase();
+
+  if (
+    normalized === "deepseek-v4-pro" ||
+    normalized === "deepseek-pro" ||
+    normalized === "deepseek pro"
+  ) {
+    return PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL;
+  }
+
+  if (
+    normalized === "deepseek-v4-flash" ||
+    normalized === "deepseek-flash" ||
+    normalized === "deepseek flash" ||
+    normalized === "deepseek-chat" ||
+    normalized === "deepseek-reasoner"
+  ) {
+    return PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL;
+  }
+
+  return PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL;
+}
+
+function buildFocusedTaxonomyPrompt() {
+  return [
+    "You are an academic paper taxonomy expert. Your goal is to group a batch of papers into a small, stable set of theme folders. Do not invent a new primary folder for each paper.",
+    "The primary theme must preferably be one of this stable pool: Intervention and Trial Research, Observational and Epidemiology Research, Evidence Synthesis, Methodology and Theory, Measurement and Instrument Development, Mechanism and Basic Research, Prediction and Diagnostic Evaluation, Application Systems and Resource Building, Policy Ethics and Practice Translation, Other.",
+    "Merge synonyms: RCT, randomized controlled trial, clinical trial, intervention effect, and experiment belong to Intervention and Trial Research; systematic review, meta-analysis, evidence synthesis, and scoping review belong to Evidence Synthesis; questionnaire, scale, reliability, validity, and instrument belong to Measurement and Instrument Development; prediction, diagnosis, screening, prognosis, and risk model belong to Prediction and Diagnostic Evaluation.",
+    "The secondary theme should name the reusable concrete object, question, or method. Keep it concise and focused. Avoid over-specific details such as sample size, year, region, dataset version, author institution, or dosage. Use the same wording for synonymous themes.",
+    "Output strict JSON only, with no Markdown and no explanation. Format: {\"primary\":\"Primary Theme\",\"secondary\":\"Secondary Theme\"}. If information is insufficient, output: {\"primary\":\"Other\",\"secondary\":\"Uncertain\"}."
+  ].join("\n");
 }
 
 function requestCompletion(url, apiKey, body) {
@@ -190,7 +235,8 @@ function normalizeClassification(text) {
   // Clean think blocks, code blocks, and common prefixes
   normalized = normalized
     .replace(/<think>[\s\S]*?<\/think>/gi, "\n")
-    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
     .replace(/^(classification|category|topic)[:：]\s*/i, "")
     .trim();
 
@@ -198,20 +244,25 @@ function normalizeClassification(text) {
     return "";
   }
 
-  const slashMatch = normalized.match(/([^\s\/:;,.\n]+)\s*\/\s*([^\s\/:;,.\n]+)/);
-  if (slashMatch) {
-    return (slashMatch[1] + "/" + slashMatch[2]).trim();
+  const jsonClassification = extractJSONClassification(normalized);
+  if (jsonClassification) {
+    return jsonClassification;
+  }
+
+  const slashParts = normalized
+    .split(/[\/／|｜\\]+/)
+    .map(function (part) {
+      return normalizeClassificationPart(part);
+    })
+    .filter(Boolean);
+  if (slashParts.length >= 2) {
+    return slashParts[0] + "/" + slashParts.slice(1).join("-");
   }
 
   const lines = normalized
     .split("\n")
     .map(function (line) {
-      return line
-        .trim()
-        .replace(/^[-*•\d\.\)\(]+\s*/, "")
-        .replace(/^(classification|category|topic)[:：]\s*/i, "")
-        .replace(/[;,.]+$/, "")
-        .trim();
+      return normalizeClassificationPart(line);
     })
     .filter(Boolean);
 
@@ -220,4 +271,48 @@ function normalizeClassification(text) {
   }
 
   return "";
+}
+
+function extractJSONClassification(text) {
+  const candidates = [text];
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch && objectMatch[0] !== text) {
+    candidates.push(objectMatch[0]);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const primary = getJSONText(parsed, ["primary", "primaryTheme", "Primary Theme", "category"]);
+      const secondary = getJSONText(parsed, ["secondary", "secondaryTheme", "Secondary Theme", "topic"]);
+      if (primary && secondary) {
+        return normalizeClassificationPart(primary) + "/" + normalizeClassificationPart(secondary);
+      }
+    } catch (e) {}
+  }
+
+  return "";
+}
+
+function getJSONText(obj, keys) {
+  if (!obj || typeof obj !== "object") {
+    return "";
+  }
+
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null) {
+      return String(obj[key]);
+    }
+  }
+
+  return "";
+}
+
+function normalizeClassificationPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^[-*•\d\.\)\(]+\s*/, "")
+    .replace(/^(classification|category|topic|primary|secondary)[:：]\s*/i, "")
+    .replace(/[;,.]+$/, "")
+    .trim();
 }

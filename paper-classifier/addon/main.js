@@ -15,6 +15,7 @@ var PaperClassifier = {
   preferencePaneKey: "paper-classifier-prefpane",
   prefPrefix: "extensions.paper-classifier.",
   prefDefaultEndpoint: "https://api.deepseek.com",
+  prefDefaultModel: "deepseek-v4-flash",
   preferencePaneRegistering: false,
   preferencePaneRetryCount: 0,
   preferencePaneRetryMax: 60,
@@ -53,6 +54,18 @@ var PaperClassifier = {
     Zotero.Prefs.set(this.prefPrefix + key, value, true);
   },
 
+  normalizeModelPref: function (model) {
+    const normalized = String(model || "").trim().toLowerCase();
+    if (
+      normalized === "deepseek-v4-pro" ||
+      normalized === "deepseek-pro" ||
+      normalized === "deepseek pro"
+    ) {
+      return "deepseek-v4-pro";
+    }
+    return this.prefDefaultModel;
+  },
+
   onPreferencePaneLoad: function (prefWin) {
     const doc = prefWin && prefWin.document ? prefWin.document : null;
     if (!doc) {
@@ -72,7 +85,9 @@ var PaperClassifier = {
     this.setGlobalPref("apiEndpoint", this.prefDefaultEndpoint);
 
     apiKeyEl.value = this.getGlobalPref("apiKey", "");
-    modelEl.value = this.getGlobalPref("model", "deepseek-chat");
+    const model = this.normalizeModelPref(this.getGlobalPref("model", this.prefDefaultModel));
+    modelEl.value = model;
+    this.setGlobalPref("model", model);
     collectionRootEl.value = this.getGlobalPref("collectionRoot", "AI主题分类");
     keepOriginalEl.checked = !!this.getGlobalPref("keepOriginalCollections", false);
     statusEl.value = "";
@@ -91,7 +106,7 @@ var PaperClassifier = {
     });
 
     modelEl.addEventListener("command", () => {
-      this.setGlobalPref("model", modelEl.value || "deepseek-chat");
+      this.setGlobalPref("model", this.normalizeModelPref(modelEl.value));
     });
 
     collectionRootEl.addEventListener("input", () => {
@@ -129,7 +144,7 @@ var PaperClassifier = {
     }
 
     const apiKey = (apiKeyEl.value || "").trim();
-    const model = modelEl.value || "deepseek-chat";
+    const model = this.normalizeModelPref(modelEl.value);
     const collectionRoot = (collectionRootEl.value || "").trim() || "AI主题分类";
     const keepOriginalCollections = !!keepOriginalEl.checked;
 
@@ -150,7 +165,7 @@ var PaperClassifier = {
     statusEl.style.color = "#6b7280";
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", this.prefDefaultEndpoint + "/v1/chat/completions", true);
+    xhr.open("POST", this.prefDefaultEndpoint + "/chat/completions", true);
     xhr.timeout = 15000;
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
@@ -195,6 +210,7 @@ var PaperClassifier = {
           content: "请回复：ok"
         }
       ],
+      thinking: { type: "disabled" },
       max_tokens: 5,
       temperature: 0,
       stream: false

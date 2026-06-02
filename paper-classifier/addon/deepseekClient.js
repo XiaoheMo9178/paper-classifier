@@ -7,6 +7,11 @@
  * @param {string} model
  * @returns {Promise<string>}
  */
+var PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com";
+var PAPER_CLASSIFIER_DEEPSEEK_CHAT_PATH = "/chat/completions";
+var PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
+var PAPER_CLASSIFIER_DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
+
 async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error("API Key 不能为空");
@@ -16,9 +21,9 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   }
 
   const trimmedApiKey = apiKey.trim();
-  const baseEndpoint = (endpoint || "https://api.deepseek.com").trim().replace(/\/+$/, "");
-  const requestedModel = (model || "deepseek-chat").trim();
-  const url = baseEndpoint + "/v1/chat/completions";
+  const baseEndpoint = (endpoint || PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_ENDPOINT).trim().replace(/\/+$/, "");
+  const requestedModel = normalizeDeepSeekModel(model);
+  const url = baseEndpoint + PAPER_CLASSIFIER_DEEPSEEK_CHAT_PATH;
 
   const buildBody = function (targetModel) {
     return {
@@ -26,16 +31,17 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
       messages: [
         {
           role: "system",
-          content: "你是一个学术论文研究主题分类专家。请基于论文标题与摘要进行“研究主题”归类，而不是学科归类。优先依据研究设计与证据类型、研究目标和核心问题进行分类，例如随机对照试验、系统评价、meta分析、理论研究、量表编制与验证、机制研究、干预研究等；如果需要可自定义更贴切的主题名称。只输出中文分类结果，不要解释，不要多余文本，输出格式固定为：一级主题/二级主题。若信息不足则输出：其他/待判定"
+          content: buildFocusedTaxonomyPrompt()
         },
         {
           role: "user",
-          content: "论文标题：" + title + "\n\n摘要：" + (abstract || "")
+          content: "请分类以下论文，只返回 JSON。\n\n论文标题：" + title + "\n\n摘要：" + (abstract || "")
         }
       ],
-      // reasoner 模型在低 token 场景可能出现 content 为空，适当提高上限
-      max_tokens: 128,
-      temperature: 0.1,
+      thinking: { type: "disabled" },
+      response_format: { type: "json_object" },
+      max_tokens: 160,
+      temperature: 0,
       stream: false
     };
   };
@@ -43,12 +49,16 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   let parsed = await requestCompletion(url, trimmedApiKey, buildBody(requestedModel));
   let classification = extractClassification(parsed);
 
-  // 兼容 deepseek-reasoner：若最终 content 为空，自动回退一次 deepseek-chat
-  if (!classification && requestedModel === "deepseek-reasoner") {
+  // 若短输出被截断或为空，换另一个 V4 模型兜底一次。
+  if (!classification) {
+    const fallbackModel =
+      requestedModel === PAPER_CLASSIFIER_DEEPSEEK_PRO_MODEL
+        ? PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_MODEL
+        : PAPER_CLASSIFIER_DEEPSEEK_PRO_MODEL;
     if (typeof Zotero !== "undefined" && Zotero && typeof Zotero.debug === "function") {
-      Zotero.debug("[PaperClassifier] deepseek-reasoner 返回空内容，自动回退 deepseek-chat 重试");
+      Zotero.debug("[PaperClassifier] " + requestedModel + " 返回空分类，自动回退 " + fallbackModel + " 重试");
     }
-    parsed = await requestCompletion(url, trimmedApiKey, buildBody("deepseek-chat"));
+    parsed = await requestCompletion(url, trimmedApiKey, buildBody(fallbackModel));
     classification = extractClassification(parsed);
   }
 
@@ -64,6 +74,41 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   }
 
   return classification;
+}
+
+function normalizeDeepSeekModel(model) {
+  const raw = String(model || "").trim();
+  const normalized = raw.toLowerCase();
+
+  if (
+    normalized === "deepseek-v4-pro" ||
+    normalized === "deepseek-pro" ||
+    normalized === "deepseek pro"
+  ) {
+    return PAPER_CLASSIFIER_DEEPSEEK_PRO_MODEL;
+  }
+
+  if (
+    normalized === "deepseek-v4-flash" ||
+    normalized === "deepseek-flash" ||
+    normalized === "deepseek flash" ||
+    normalized === "deepseek-chat" ||
+    normalized === "deepseek-reasoner"
+  ) {
+    return PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_MODEL;
+  }
+
+  return PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_MODEL;
+}
+
+function buildFocusedTaxonomyPrompt() {
+  return [
+    "你是学术论文主题归档专家。目标是让一批论文聚合到少量稳定主题目录中，不要给每篇论文发明新的一级目录。",
+    "一级主题必须优先从以下稳定主题池选择：干预与试验研究、观察性与流行病学研究、系统综述与证据综合、方法学与理论框架、量表与测量工具、机制与基础研究、预测模型与诊断评估、应用系统与资源构建、政策伦理与实践转化、其他。",
+    "归并规则：RCT、随机对照、临床试验、干预效果归入“干预与试验研究”；系统评价、meta分析、荟萃分析、范围综述归入“系统综述与证据综合”；问卷、量表、信效度、测量工具归入“量表与测量工具”；预测、诊断、筛查、预后、风险模型归入“预测模型与诊断评估”。",
+    "二级主题用于表达具体但可复用的研究对象、问题或方法。保持简短聚焦，避免样本量、年份、地区、数据集版本、作者机构、具体药物剂量等过窄信息；同义主题使用同一名称。",
+    "只输出严格 JSON，不要 Markdown，不要解释。格式：{\"primary\":\"一级主题\",\"secondary\":\"二级主题\"}。信息不足时输出：{\"primary\":\"其他\",\"secondary\":\"待判定\"}。"
+  ].join("\n");
 }
 
 function requestCompletion(url, apiKey, body) {
@@ -137,7 +182,7 @@ function extractClassification(parsed) {
     }
   }
 
-  // reasoner 兜底：尝试从 reasoning_content 中提取 “一级/二级”
+  // 兜底：若服务端返回了 reasoning_content，也尝试从中提取分类。
   const reasoning = extractTextValue(message.reasoning_content);
   const reasoningNormalized = normalizeClassification(reasoning);
   if (reasoningNormalized) {
@@ -190,7 +235,8 @@ function normalizeClassification(text) {
   // 清理 think 块、代码块与常见前缀
   normalized = normalized
     .replace(/<think>[\s\S]*?<\/think>/gi, "\n")
-    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
     .replace(/^分类[:：]\s*/i, "")
     .trim();
 
@@ -198,20 +244,25 @@ function normalizeClassification(text) {
     return "";
   }
 
-  const slashMatch = normalized.match(/([^\s\/：:；;，,。！？!?\n]+)\s*\/\s*([^\s\/：:；;，,。！？!?\n]+)/);
-  if (slashMatch) {
-    return (slashMatch[1] + "/" + slashMatch[2]).trim();
+  const jsonClassification = extractJSONClassification(normalized);
+  if (jsonClassification) {
+    return jsonClassification;
+  }
+
+  const slashParts = normalized
+    .split(/[\/／|｜\\]+/)
+    .map(function (part) {
+      return normalizeClassificationPart(part);
+    })
+    .filter(Boolean);
+  if (slashParts.length >= 2) {
+    return slashParts[0] + "/" + slashParts.slice(1).join("-");
   }
 
   const lines = normalized
     .split("\n")
     .map(function (line) {
-      return line
-        .trim()
-        .replace(/^[-*•\d\.\)\(]+\s*/, "")
-        .replace(/^分类[:：]\s*/i, "")
-        .replace(/[。；;，,]+$/, "")
-        .trim();
+      return normalizeClassificationPart(line);
     })
     .filter(Boolean);
 
@@ -220,4 +271,48 @@ function normalizeClassification(text) {
   }
 
   return "";
+}
+
+function extractJSONClassification(text) {
+  const candidates = [text];
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch && objectMatch[0] !== text) {
+    candidates.push(objectMatch[0]);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const primary = getJSONText(parsed, ["primary", "primaryTheme", "一级主题", "一级分类", "category"]);
+      const secondary = getJSONText(parsed, ["secondary", "secondaryTheme", "二级主题", "二级分类", "topic"]);
+      if (primary && secondary) {
+        return normalizeClassificationPart(primary) + "/" + normalizeClassificationPart(secondary);
+      }
+    } catch (e) {}
+  }
+
+  return "";
+}
+
+function getJSONText(obj, keys) {
+  if (!obj || typeof obj !== "object") {
+    return "";
+  }
+
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null) {
+      return String(obj[key]);
+    }
+  }
+
+  return "";
+}
+
+function normalizeClassificationPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^[-*•\d\.\)\(]+\s*/, "")
+    .replace(/^(分类|主题|一级主题|二级主题|primary|secondary)[:：]\s*/i, "")
+    .replace(/[。；;，,]+$/, "")
+    .trim();
 }

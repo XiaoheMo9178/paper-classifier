@@ -97,7 +97,7 @@ function readProcessorSettings() {
   return {
     apiKey: getPluginPref("apiKey", ""),
     endpoint: getPluginPref("apiEndpoint", "https://api.deepseek.com"),
-    model: getPluginPref("model", "deepseek-chat"),
+    model: normalizeDeepSeekModelPref(getPluginPref("model", "deepseek-v4-flash")),
     collectionRoot: normalizeName(getPluginPref("collectionRoot", "AI Theme Classification")) || "AI Theme Classification",
     keepOriginalCollections: !!getPluginPref("keepOriginalCollections", false)
   };
@@ -125,17 +125,100 @@ function parseClassification(rawClassification) {
     .filter(Boolean);
 
   if (parts.length >= 2) {
-    return {
-      primary: parts[0],
-      secondary: parts.slice(1).join("-")
-    };
+    return normalizeParsedClassification(parts[0], parts.slice(1).join("-"));
   }
 
   // If no "primary/secondary" format is returned, route to "Other"
+  return normalizeParsedClassification("Other", parts[0] || raw);
+}
+
+function normalizeParsedClassification(primary, secondary) {
   return {
-    primary: "Other",
-    secondary: parts[0] || raw
+    primary: canonicalizePrimaryName(primary),
+    secondary: normalizeSecondaryName(secondary) || "Uncertain"
   };
+}
+
+function canonicalizePrimaryName(value) {
+  const name = normalizeName(value);
+  const key = name.toLowerCase().replace(/\s+/g, "");
+
+  const rules = [
+    {
+      name: "Evidence Synthesis",
+      pattern: /(evidencesynthesis|systematicreview|meta-analysis|metaanalysis|scopingreview|review|综述|荟萃)/
+    },
+    {
+      name: "Intervention and Trial Research",
+      pattern: /(intervention|trial|rct|randomized|randomised|experiment|effectiveness|efficacy|clinicaltrial|干预|试验|实验)/
+    },
+    {
+      name: "Observational and Epidemiology Research",
+      pattern: /(observational|epidemiology|cohort|case-control|casecontrol|cross-sectional|crosssectional|survey|riskfactor|prevalence|incidence|观察|队列|横断面)/
+    },
+    {
+      name: "Measurement and Instrument Development",
+      pattern: /(measurement|instrument|scale|questionnaire|reliability|validity|psychometric|量表|问卷|信度|效度)/
+    },
+    {
+      name: "Prediction and Diagnostic Evaluation",
+      pattern: /(prediction|diagnosis|diagnostic|prognosis|screening|riskmodel|machinelearning|deeplearning|algorithm|预测|诊断|预后|筛查|机器学习)/
+    },
+    {
+      name: "Mechanism and Basic Research",
+      pattern: /(mechanism|basic|pathway|molecular|cell|animal|pathology|biomarker|机制|分子|细胞|动物|病理)/
+    },
+    {
+      name: "Methodology and Theory",
+      pattern: /(methodology|method|theory|framework|guideline|consensus|reportingstandard|方法|理论|框架|指南|共识)/
+    },
+    {
+      name: "Application Systems and Resource Building",
+      pattern: /(application|system|platform|software|engineering|implementation|deployment|dataset|database|resource|corpus|系统|平台|数据集|数据库|资源)/
+    },
+    {
+      name: "Policy Ethics and Practice Translation",
+      pattern: /(policy|ethics|economic|cost|qualityimprovement|practice|management|education|training|translation|政策|伦理|经济|实践|教育|培训)/
+    },
+    {
+      name: "Other",
+      pattern: /(other|uncertain|其他|待判定)/
+    }
+  ];
+
+  for (const rule of rules) {
+    if (rule.pattern.test(key)) {
+      return rule.name;
+    }
+  }
+
+  return name || "Other";
+}
+
+function normalizeSecondaryName(value) {
+  const normalized = normalizeName(value)
+    .replace(/^(secondary theme|secondary category|topic|category)[:：]\s*/i, "")
+    .replace(/[\/／|｜\\]+/g, "-")
+    .replace(/[;,.]+$/, "")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.length > 56 ? normalized.slice(0, 56).trim() : normalized;
+}
+
+function normalizeDeepSeekModelPref(model) {
+  const normalized = String(model || "").trim().toLowerCase();
+  if (
+    normalized === "deepseek-v4-pro" ||
+    normalized === "deepseek-pro" ||
+    normalized === "deepseek pro"
+  ) {
+    return "deepseek-v4-pro";
+  }
+  return "deepseek-v4-flash";
 }
 
 async function ensureClassificationCollection(libraryID, rootName, parsed, runtime) {

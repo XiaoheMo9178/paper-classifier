@@ -3,6 +3,7 @@
 var PaperClassifierPrefsPane = {
   PREFIX: "extensions.paper-classifier.",
   DEFAULT_ENDPOINT: "https://api.deepseek.com",
+  DEFAULT_MODEL: "deepseek-v4-flash",
   _els: null,
 
   getPref: function (key, fallbackValue) {
@@ -37,18 +38,20 @@ var PaperClassifierPrefsPane = {
     const doc = window.document;
     const apiKeyEl = doc.getElementById("paper-classifier-pref-apiKey");
     const modelEl = doc.getElementById("paper-classifier-pref-model");
-    const outputEl = doc.getElementById("paper-classifier-pref-outputField");
+    const collectionRootEl = doc.getElementById("paper-classifier-pref-collectionRoot");
+    const keepOriginalEl = doc.getElementById("paper-classifier-pref-keepOriginalCollections");
     const testBtnEl = doc.getElementById("paper-classifier-pref-test");
     const testStatusEl = doc.getElementById("paper-classifier-pref-test-status");
 
-    if (!apiKeyEl || !modelEl || !outputEl || !testBtnEl || !testStatusEl) {
+    if (!apiKeyEl || !modelEl || !collectionRootEl || !keepOriginalEl || !testBtnEl || !testStatusEl) {
       return;
     }
 
     this._els = {
       apiKey: apiKeyEl,
       model: modelEl,
-      output: outputEl,
+      collectionRoot: collectionRootEl,
+      keepOriginal: keepOriginalEl,
       testBtn: testBtnEl,
       testStatus: testStatusEl
     };
@@ -61,11 +64,24 @@ var PaperClassifierPrefsPane = {
       apiKeyEl.value = this.getPref("apiKey", "");
     }
     if (!modelEl.value) {
-      modelEl.value = this.getPref("model", "deepseek-chat");
+      modelEl.value = this.normalizeModelPref(this.getPref("model", this.DEFAULT_MODEL));
     }
-    if (!outputEl.value) {
-      outputEl.value = this.getPref("outputField", "tag");
+    if (!collectionRootEl.value) {
+      collectionRootEl.value = this.getPref("collectionRoot", "AI主题分类");
     }
+    keepOriginalEl.checked = !!this.getPref("keepOriginalCollections", false);
+  },
+
+  normalizeModelPref: function (model) {
+    const normalized = String(model || "").trim().toLowerCase();
+    if (
+      normalized === "deepseek-v4-pro" ||
+      normalized === "deepseek-pro" ||
+      normalized === "deepseek pro"
+    ) {
+      return "deepseek-v4-pro";
+    }
+    return this.DEFAULT_MODEL;
   },
 
   _setTestStatus: function (text, color) {
@@ -85,7 +101,7 @@ var PaperClassifierPrefsPane = {
     }
 
     const apiKey = (this._els.apiKey.value || "").trim();
-    const model = this._els.model.value || "deepseek-chat";
+    const model = this.normalizeModelPref(this._els.model.value);
 
     if (!apiKey) {
       this._setTestStatus("请先输入 API Key", "#b91c1c");
@@ -96,7 +112,7 @@ var PaperClassifierPrefsPane = {
     this._setTestStatus("验证中...", "#6b7280");
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", this.DEFAULT_ENDPOINT + "/v1/chat/completions", true);
+    xhr.open("POST", this.DEFAULT_ENDPOINT + "/chat/completions", true);
     xhr.timeout = 15000;
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
@@ -137,6 +153,7 @@ var PaperClassifierPrefsPane = {
           content: "请回复：ok"
         }
       ],
+      thinking: { type: "disabled" },
       max_tokens: 5,
       temperature: 0,
       stream: false
