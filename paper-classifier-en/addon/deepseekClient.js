@@ -103,11 +103,20 @@ function normalizeDeepSeekModel(model) {
 
 function buildFocusedTaxonomyPrompt() {
   return [
-    "You are an academic paper taxonomy expert. Your goal is to group a batch of papers into a small, stable set of theme folders. Do not invent a new primary folder for each paper.",
-    "The primary theme must preferably be one of this stable pool: Intervention and Trial Research, Observational and Epidemiology Research, Evidence Synthesis, Methodology and Theory, Measurement and Instrument Development, Mechanism and Basic Research, Prediction and Diagnostic Evaluation, Application Systems and Resource Building, Policy Ethics and Practice Translation, Other.",
-    "Merge synonyms: RCT, randomized controlled trial, clinical trial, intervention effect, and experiment belong to Intervention and Trial Research; systematic review, meta-analysis, evidence synthesis, and scoping review belong to Evidence Synthesis; questionnaire, scale, reliability, validity, and instrument belong to Measurement and Instrument Development; prediction, diagnosis, screening, prognosis, and risk model belong to Prediction and Diagnostic Evaluation.",
-    "The secondary theme should name the reusable concrete object, question, or method. Keep it concise and focused. Avoid over-specific details such as sample size, year, region, dataset version, author institution, or dosage. Use the same wording for synonymous themes.",
-    "Output strict JSON only, with no Markdown and no explanation. Format: {\"primary\":\"Primary Theme\",\"secondary\":\"Secondary Theme\"}. If information is insufficient, output: {\"primary\":\"Other\",\"secondary\":\"Uncertain\"}."
+    "You are an academic paper taxonomy expert. Your goal is to compress a batch of papers into a small, stable set of folders. Do not create categories from disease names, samples, regions, datasets, dosages, author institutions, or overly specific research objects.",
+    "You must choose both primary and secondary from the controlled taxonomy below. The secondary theme must be one of the listed labels. Do not invent free-form secondary labels.",
+    "Intervention and Trial Research: Randomized Controlled Trial, Nonrandomized Intervention, Trial Protocol, Intervention Effect Evaluation, Behavioral and Educational Intervention, Implementation and Adherence, General Study.",
+    "Observational and Epidemiology Research: Cohort Study, Case-Control Study, Cross-Sectional Survey, Association and Risk Factors, Prevalence and Incidence, Real-World Study, General Study.",
+    "Evidence Synthesis: Systematic Review, Meta-Analysis, Scoping Review, Evidence Map, Umbrella Review, Review Methodology, General Study.",
+    "Methodology and Theory: Theory Model, Methodology Study, Study Protocol, Guideline and Consensus, Reporting Standard, Qualitative Study, General Study.",
+    "Measurement and Instrument Development: Scale Development, Validity and Reliability, Questionnaire Instrument, Indicator System, Measurement Method Comparison, General Study.",
+    "Mechanism and Basic Research: Molecular Mechanism, Cell Experiment, Animal Experiment, Pathophysiology, Biomarker, Pathway Study, General Study.",
+    "Prediction and Diagnostic Evaluation: Prediction Model, Diagnostic Accuracy, Screening Tool, Prognostic Evaluation, Risk Score, Model Validation, General Study.",
+    "Application Systems and Resource Building: Software Platform, Decision Support System, Database and Dataset, Algorithm Application, Resource Building, Tool Development, General Study.",
+    "Policy Ethics and Practice Translation: Policy and Management, Health Economics, Ethics and Privacy, Education and Training, Quality Improvement, Implementation Translation, General Study.",
+    "Other: Uncertain, Editorial and Commentary, Background Review.",
+    "Priority: classify by study design and evidence type first, then choose the nearest fixed secondary label. If the paper object is very specific but the study type is clear, still choose a fixed label, e.g. diabetes education RCT -> Intervention and Trial Research/Randomized Controlled Trial or Behavioral and Educational Intervention.",
+    "Output strict JSON only, with no Markdown and no explanation. Format: {\"primary\":\"Primary Theme\",\"secondary\":\"Secondary Theme\"}."
   ].join("\n");
 }
 

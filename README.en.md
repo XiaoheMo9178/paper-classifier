@@ -15,7 +15,7 @@ Paper Classifier is a Zotero Bootstrap plugin for researchers who need fast, con
       / Paper Item
 ```
 
-The target is theme-based classification (not discipline-based). The plugin now prefers a stable primary theme pool, such as Intervention and Trial Research, Evidence Synthesis, Measurement and Instrument Development, and Prediction and Diagnostic Evaluation, then generates reusable secondary themes. This keeps batch classification focused instead of creating scattered folders for every paper.
+The target is theme-based classification (not discipline-based). The plugin now prefers a stable primary theme pool, such as Intervention and Trial Research, Evidence Synthesis, Measurement and Instrument Development, and Prediction and Diagnostic Evaluation. Secondary themes also come from a controlled taxonomy, which keeps batch classification focused instead of creating scattered folders for every paper.
 
 ## Key Features
 
@@ -26,7 +26,7 @@ The target is theme-based classification (not discipline-based). The plugin now 
 - Native Preferences pane integration in Zotero
 - Built-in API Key validation button
 - Model selector: `deepseek-v4-flash` / `deepseek-v4-pro`
-- Focused theme pool plus synonym merging to reduce folder fragmentation
+- Focused theme pool plus a fixed secondary taxonomy and synonym merging to reduce folder fragmentation
 - Auto-retry with the other V4 model when a short classification is empty
 - Completion dialog summarizes category counts instead of listing every paper
 
@@ -40,8 +40,8 @@ The target is theme-based classification (not discipline-based). The plugin now 
 
 | Edition | Package | Plugin ID | UI Language |
 |---|---|---|---|
-| Chinese | `paper-classifier-1.1.1.xpi` | `paper-classifier@example.com` | Chinese |
-| English | `paper-classifier-1.1.1-en.xpi` | `paper-classifier-en@example.com` | English |
+| Chinese | `paper-classifier-1.1.2.xpi` | `paper-classifier@example.com` | Chinese |
+| English | `paper-classifier-1.1.2-en.xpi` | `paper-classifier-en@example.com` | English |
 
 Both editions can be installed at the same time (different plugin IDs).
 
@@ -77,7 +77,7 @@ Notes:
 1. Select one or more regular top-level items (not attachments)
 2. Right-click -> `AI Classify Papers`
 3. Plugin reads title/abstract and requests DeepSeek
-4. Plugin creates and routes to `Root/Focused Primary/Secondary`
+4. Plugin creates and routes to `Root/Focused Primary/Controlled Secondary`
 5. A summary dialog shows success/failure totals, number of categories, and paper count per category
 
 ## Output Behavior
@@ -93,14 +93,14 @@ Chinese edition:
 
 ```bash
 cd paper-classifier
-zip -r ../paper-classifier-1.1.1.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.1.2.xpi . -x '*.DS_Store'
 ```
 
 English edition:
 
 ```bash
 cd paper-classifier-en
-zip -r ../paper-classifier-1.1.1-en.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.1.2-en.xpi . -x '*.DS_Store'
 ```
 
 ## Troubleshooting
@@ -120,6 +120,6 @@ zip -r ../paper-classifier-1.1.1-en.xpi . -x '*.DS_Store'
 paper-classifier/
 ├── paper-classifier/                 # Chinese plugin source
 ├── paper-classifier-en/              # English plugin source
-├── paper-classifier-1.1.1.xpi        # Chinese package
-└── paper-classifier-1.1.1-en.xpi     # English package
+├── paper-classifier-1.1.2.xpi        # Chinese package
+└── paper-classifier-1.1.2-en.xpi     # English package
 ```

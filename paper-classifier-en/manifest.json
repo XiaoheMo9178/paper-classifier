@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Paper Classifier EN",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Automatically classify papers into focused themes with the DeepSeek V4 API",
   "author": "local",
   "homepage_url": "https://local.paper-classifier-en.plugin/",
