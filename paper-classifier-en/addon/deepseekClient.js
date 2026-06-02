@@ -5,6 +5,7 @@
  * @param {string} apiKey
  * @param {string} endpoint
  * @param {string} model
+ * @param {string} researchTopic
  * @returns {Promise<string>}
  */
 var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com";
@@ -12,12 +13,15 @@ var PAPER_CLASSIFIER_EN_DEEPSEEK_CHAT_PATH = "/chat/completions";
 var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
 var PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 
-async function classifyPaper(title, abstract, apiKey, endpoint, model) {
+async function classifyPaper(title, abstract, apiKey, endpoint, model, researchTopic) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error("API Key is required");
   }
   if (!title || !title.trim()) {
     throw new Error("Paper title is required");
+  }
+  if (!researchTopic || !researchTopic.trim()) {
+    throw new Error("Research topic is required");
   }
 
   const trimmedApiKey = apiKey.trim();
@@ -35,7 +39,13 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
         },
         {
           role: "user",
-          content: "Classify the following paper and return only JSON.\n\nPaper title: " + title + "\n\nAbstract: " + (abstract || "")
+          content:
+            "Current research topic: " +
+            researchTopic.trim() +
+            "\n\nClassify the following paper by its role in this research topic and return only JSON.\n\nPaper title: " +
+            title +
+            "\n\nAbstract: " +
+            (abstract || "")
         }
       ],
       thinking: { type: "disabled" },
@@ -103,19 +113,19 @@ function normalizeDeepSeekModel(model) {
 
 function buildFocusedTaxonomyPrompt() {
   return [
-    "You are an academic paper taxonomy expert. Your goal is to compress a batch of papers into a small, stable set of folders. Do not create categories from disease names, samples, regions, datasets, dosages, author institutions, or overly specific research objects.",
-    "You must choose both primary and secondary from the controlled taxonomy below. The secondary theme must be one of the listed labels. Do not invent free-form secondary labels.",
-    "Intervention and Trial Research: Randomized Controlled Trial, Nonrandomized Intervention, Trial Protocol, Intervention Effect Evaluation, Behavioral and Educational Intervention, Implementation and Adherence, General Study.",
-    "Observational and Epidemiology Research: Cohort Study, Case-Control Study, Cross-Sectional Survey, Association and Risk Factors, Prevalence and Incidence, Real-World Study, General Study.",
-    "Evidence Synthesis: Systematic Review, Meta-Analysis, Scoping Review, Evidence Map, Umbrella Review, Review Methodology, General Study.",
-    "Methodology and Theory: Theory Model, Methodology Study, Study Protocol, Guideline and Consensus, Reporting Standard, Qualitative Study, General Study.",
-    "Measurement and Instrument Development: Scale Development, Validity and Reliability, Questionnaire Instrument, Indicator System, Measurement Method Comparison, General Study.",
-    "Mechanism and Basic Research: Molecular Mechanism, Cell Experiment, Animal Experiment, Pathophysiology, Biomarker, Pathway Study, General Study.",
-    "Prediction and Diagnostic Evaluation: Prediction Model, Diagnostic Accuracy, Screening Tool, Prognostic Evaluation, Risk Score, Model Validation, General Study.",
-    "Application Systems and Resource Building: Software Platform, Decision Support System, Database and Dataset, Algorithm Application, Resource Building, Tool Development, General Study.",
-    "Policy Ethics and Practice Translation: Policy and Management, Health Economics, Ethics and Privacy, Education and Training, Quality Improvement, Implementation Translation, General Study.",
-    "Other: Uncertain, Editorial and Commentary, Background Review.",
-    "Priority: classify by study design and evidence type first, then choose the nearest fixed secondary label. If the paper object is very specific but the study type is clear, still choose a fixed label, e.g. diabetes education RCT -> Intervention and Trial Research/Randomized Controlled Trial or Behavioral and Educational Intervention.",
+    "You are an academic literature taxonomy expert for a concrete research project. The user provides the current research topic. You must classify each paper by its role relative to that topic, not by creating categories from disease names, samples, regions, datasets, dosages, author institutions, or overly specific paper objects.",
+    "You must choose both primary and secondary from the controlled taxonomy below. Primary and secondary labels must be exactly from the listed labels. Do not invent free-form labels.",
+    "Core Topic Research: Directly Relevant Study, Subtopic Extension, Population and Setting, Problem Status, General Study.",
+    "Background Theory and Concepts: Theory Framework, Concept Definition, Development Trend, Narrative Review, General Study.",
+    "Methods Models and Tools: Research Method, Prediction Model, Diagnosis and Screening, Algorithm Method, Model Validation, General Study.",
+    "Measurement Evaluation and Indicators: Scale Development, Validity and Reliability, Evaluation Indicator, Measurement Method, General Study.",
+    "Intervention Application and Practice: Intervention Study, Randomized Controlled Trial, Behavioral and Educational Intervention, Implementation Translation, Effect Evaluation, General Study.",
+    "Mechanisms and Risk Factors: Mechanism Study, Risk Factors, Biomarker, Basic Experiment, Association Factors, General Study.",
+    "Evidence Synthesis and Review: Systematic Review, Meta-Analysis, Scoping Review, Guideline and Consensus, General Study.",
+    "Data Resources and Systems: Dataset Resource, Software Platform, Decision Support, Tool Development, General Study.",
+    "Policy Ethics and Translation: Policy Management, Ethics and Privacy, Health Economics, Education and Training, Quality Improvement, General Study.",
+    "Weakly Related or Exclude: Weakly Related, Irrelevant, Uncertain.",
+    "Priority: first judge the relationship between the paper and the user's research topic, then choose the paper's role in that project. Directly relevant papers should usually go to Core Topic Research. Papers that mainly provide methods, measures, mechanisms, evidence reviews, data systems, or policy background should go to the corresponding role category. Clearly unrelated papers go to Weakly Related or Exclude.",
     "Output strict JSON only, with no Markdown and no explanation. Format: {\"primary\":\"Primary Theme\",\"secondary\":\"Secondary Theme\"}."
   ].join("\n");
 }

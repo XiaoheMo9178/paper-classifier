@@ -5,6 +5,7 @@
  * @param {string} apiKey
  * @param {string} endpoint
  * @param {string} model
+ * @param {string} researchTopic
  * @returns {Promise<string>}
  */
 var PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com";
@@ -12,12 +13,15 @@ var PAPER_CLASSIFIER_DEEPSEEK_CHAT_PATH = "/chat/completions";
 var PAPER_CLASSIFIER_DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
 var PAPER_CLASSIFIER_DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 
-async function classifyPaper(title, abstract, apiKey, endpoint, model) {
+async function classifyPaper(title, abstract, apiKey, endpoint, model, researchTopic) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error("API Key 不能为空");
   }
   if (!title || !title.trim()) {
     throw new Error("论文标题不能为空");
+  }
+  if (!researchTopic || !researchTopic.trim()) {
+    throw new Error("研究题目不能为空");
   }
 
   const trimmedApiKey = apiKey.trim();
@@ -35,7 +39,13 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
         },
         {
           role: "user",
-          content: "请分类以下论文，只返回 JSON。\n\n论文标题：" + title + "\n\n摘要：" + (abstract || "")
+          content:
+            "本次研究题目：" +
+            researchTopic.trim() +
+            "\n\n请判断以下论文在本次研究中的主题作用，只返回 JSON。\n\n论文标题：" +
+            title +
+            "\n\n摘要：" +
+            (abstract || "")
         }
       ],
       thinking: { type: "disabled" },
@@ -103,19 +113,19 @@ function normalizeDeepSeekModel(model) {
 
 function buildFocusedTaxonomyPrompt() {
   return [
-    "你是学术论文主题归档专家。目标是把一批论文压缩到少量稳定目录，不要按疾病、样本、地区、数据集、药物剂量、作者或具体研究对象创建新分类。",
-    "必须从下面受控分类表中选择一级主题和二级主题。二级主题只能使用表内名称，不能自由命名。",
-    "干预与试验研究：随机对照试验、非随机干预研究、临床试验方案、干预效果评价、行为教育干预、实施与依从性、综合研究。",
-    "观察性与流行病学研究：队列研究、病例对照研究、横断面调查、相关因素研究、患病率与发生率、真实世界研究、综合研究。",
-    "系统综述与证据综合：系统评价、Meta分析、范围综述、证据图谱、伞状综述、综述方法、综合研究。",
-    "方法学与理论框架：理论模型、方法学研究、研究方案、指南共识、报告规范、质性研究、综合研究。",
-    "量表与测量工具：量表开发、信效度验证、问卷工具、指标体系、测量方法比较、综合研究。",
-    "机制与基础研究：分子机制、细胞实验、动物实验、病理生理、生物标志物、作用通路、综合研究。",
-    "预测模型与诊断评估：预测模型、诊断准确性、筛查工具、预后评估、风险评分、模型验证、综合研究。",
-    "应用系统与资源构建：软件平台、决策支持系统、数据库与数据集、算法应用、资源构建、工具开发、综合研究。",
-    "政策伦理与实践转化：政策管理、健康经济学、伦理隐私、教育培训、质量改进、实施转化、综合研究。",
-    "其他：待判定、评论社论、背景综述。",
-    "归并优先级：先判断研究类型和证据类型，再选最接近的固定二级主题。若论文对象很具体但研究类型明确，仍选择固定二级主题，例如糖尿病教育RCT归入干预与试验研究/随机对照试验或行为教育干预。",
+    "你是面向具体研究项目的文献主题归档专家。用户会给出本次研究题目，你必须判断每篇论文相对该研究题目的作用，而不是只按论文自身疾病、样本、地区、数据集、药物剂量或作者创建分类。",
+    "必须从下面受控分类表中选择一级主题和二级主题。一级和二级都只能使用表内名称，不能自由命名。",
+    "核心主题研究：直接相关研究、子主题扩展、人群与场景、问题现状、综合研究。",
+    "背景理论与概念：理论框架、概念定义、发展趋势、叙述综述、综合研究。",
+    "方法模型与工具：研究方法、预测模型、诊断筛查、算法方法、模型验证、综合研究。",
+    "测量评价与指标：量表开发、信效度验证、评价指标、测量方法、综合研究。",
+    "干预应用与实践：干预研究、随机对照试验、行为教育干预、实施转化、效果评价、综合研究。",
+    "机制基础与风险因素：机制研究、风险因素、生物标志物、基础实验、相关因素、综合研究。",
+    "证据综合与综述：系统评价、Meta分析、范围综述、指南共识、综合研究。",
+    "数据资源与系统：数据集资源、软件平台、决策支持、工具开发、综合研究。",
+    "政策伦理与转化：政策管理、伦理隐私、健康经济、教育培训、质量改进、综合研究。",
+    "弱相关或排除：弱相关、不相关、待判定。",
+    "归并优先级：先判断论文与研究题目的关系，再判断它在该研究中的作用。若与题目直接相关，优先归入“核心主题研究”；若只是提供方法、量表、机制、证据综述或政策背景，则归入对应作用类别；明显无关则归入“弱相关或排除”。",
     "只输出严格 JSON，不要 Markdown，不要解释。格式：{\"primary\":\"一级主题\",\"secondary\":\"二级主题\"}。"
   ].join("\n");
 }

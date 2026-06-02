@@ -6,7 +6,7 @@
 
 ## Overview
 
-Paper Classifier is a Zotero Bootstrap plugin for researchers who need fast, consistent literature organization. It reads each paper's title and abstract, sends them to DeepSeek, gets a theme classification, and routes the item into:
+Paper Classifier is a Zotero Bootstrap plugin for researchers who need fast, consistent literature organization. When classification starts, the plugin first asks for the current research topic, then reads each paper's title and abstract, sends them to DeepSeek, classifies each paper by its role in that topic, and routes the item into:
 
 ```text
 <Collection Root>
@@ -15,18 +15,19 @@ Paper Classifier is a Zotero Bootstrap plugin for researchers who need fast, con
       / Paper Item
 ```
 
-The target is theme-based classification (not discipline-based). The plugin now prefers a stable primary theme pool, such as Intervention and Trial Research, Evidence Synthesis, Measurement and Instrument Development, and Prediction and Diagnostic Evaluation. Secondary themes also come from a controlled taxonomy, which keeps batch classification focused instead of creating scattered folders for every paper.
+The target is research-topic-driven classification, not discipline-based classification. The plugin groups papers by their role in the current research topic, such as Core Topic Research, Background Theory and Concepts, Methods Models and Tools, Measurement Evaluation and Indicators, Intervention Application and Practice, Mechanisms and Risk Factors, and Evidence Synthesis and Review.
 
 ## Key Features
 
 - One-click context action: `AI Classify Papers`
+- Research topic prompt before classification, so each batch is organized around your current project
 - Sequential batch processing to avoid API rate-limit spikes
 - Auto-create missing primary/secondary collections
 - Auto-routing with optional keep-original-collections mode
 - Native Preferences pane integration in Zotero
 - Built-in API Key validation button
 - Model selector: `deepseek-v4-flash` / `deepseek-v4-pro`
-- Focused theme pool plus a fixed secondary taxonomy and synonym merging to reduce folder fragmentation
+- Research-topic-driven theme pool plus a fixed secondary taxonomy and synonym merging to reduce folder fragmentation
 - Auto-retry with the other V4 model when a short classification is empty
 - Completion dialog summarizes category counts instead of listing every paper
 
@@ -40,8 +41,8 @@ The target is theme-based classification (not discipline-based). The plugin now 
 
 | Edition | Package | Plugin ID | UI Language |
 |---|---|---|---|
-| Chinese | `paper-classifier-1.1.2.xpi` | `paper-classifier@example.com` | Chinese |
-| English | `paper-classifier-1.1.2-en.xpi` | `paper-classifier-en@example.com` | English |
+| Chinese | `paper-classifier-1.2.0.xpi` | `paper-classifier@example.com` | Chinese |
+| English | `paper-classifier-1.2.0-en.xpi` | `paper-classifier-en@example.com` | English |
 
 Both editions can be installed at the same time (different plugin IDs).
 
@@ -76,15 +77,17 @@ Notes:
 
 1. Select one or more regular top-level items (not attachments)
 2. Right-click -> `AI Classify Papers`
-3. Plugin reads title/abstract and requests DeepSeek
-4. Plugin creates and routes to `Root/Focused Primary/Controlled Secondary`
-5. A summary dialog shows success/failure totals, number of categories, and paper count per category
+3. Enter the current research topic in the prompt
+4. Plugin reads title/abstract and requests DeepSeek with that topic
+5. Plugin creates and routes to `Root/Research-Topic Primary/Controlled Secondary`
+6. A summary dialog shows success/failure totals, number of categories, and paper count per category
 
 ## Output Behavior
 
 - Missing title -> fails with `Item is missing title`
 - Missing abstract -> fails with `Item is missing abstract`
-- Non `Primary/Secondary` response -> routed to `Other/<returned-theme>`
+- Missing research topic -> classification is cancelled with `Research topic is required`
+- Non `Primary/Secondary` response -> routed to `Weakly Related or Exclude/Uncertain`
 - Empty V4 classification -> retries once with the other V4 model
 
 ## Build From Source
@@ -93,14 +96,14 @@ Chinese edition:
 
 ```bash
 cd paper-classifier
-zip -r ../paper-classifier-1.1.2.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.2.0.xpi . -x '*.DS_Store'
 ```
 
 English edition:
 
 ```bash
 cd paper-classifier-en
-zip -r ../paper-classifier-1.1.2-en.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.2.0-en.xpi . -x '*.DS_Store'
 ```
 
 ## Troubleshooting
@@ -120,6 +123,6 @@ zip -r ../paper-classifier-1.1.2-en.xpi . -x '*.DS_Store'
 paper-classifier/
 ├── paper-classifier/                 # Chinese plugin source
 ├── paper-classifier-en/              # English plugin source
-├── paper-classifier-1.1.2.xpi        # Chinese package
-└── paper-classifier-1.1.2-en.xpi     # English package
+├── paper-classifier-1.2.0.xpi        # Chinese package
+└── paper-classifier-1.2.0-en.xpi     # English package
 ```
