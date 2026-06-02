@@ -151,8 +151,8 @@
 
       <label for="model">Model</label>
       <select id="model">
-        <option value="deepseek-chat">deepseek-chat</option>
-        <option value="deepseek-reasoner">deepseek-reasoner</option>
+        <option value="deepseek-v4-flash">DeepSeek V4 Flash (deepseek-v4-flash)</option>
+        <option value="deepseek-v4-pro">DeepSeek V4 Pro (deepseek-v4-pro)</option>
       </select>
 
       <label for="outputField">Output Mode</label>
@@ -230,7 +230,7 @@
       }
 
       $("apiKey").value = getPref(z, "apiKey", "");
-      $("model").value = getPref(z, "model", "deepseek-chat");
+      $("model").value = normalizeModelPref(getPref(z, "model", "deepseek-v4-flash"));
 
       const output = getPref(z, "outputField", "tag");
       const radio = document.querySelector('input[name="outputField"][value="' + output + '"]') || document.querySelector('input[name="outputField"][value="tag"]');
@@ -249,7 +249,7 @@
       }
 
       const apiKey = $("apiKey").value.trim();
-      const model = $("model").value;
+      const model = normalizeModelPref($("model").value);
       const outputFieldEl = document.querySelector('input[name="outputField"]:checked');
       const outputField = outputFieldEl ? outputFieldEl.value : "tag";
 
@@ -267,7 +267,7 @@
 
       const apiKey = $("apiKey").value.trim();
       const endpoint = DEFAULT_ENDPOINT.replace(/\/+$/, "");
-      const model = $("model").value || "deepseek-chat";
+      const model = normalizeModelPref($("model").value);
 
       if (!apiKey) {
         statusEl.textContent = "Please enter API Key first";
@@ -280,7 +280,7 @@
       statusEl.className = "status";
 
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", endpoint + "/v1/chat/completions", true);
+      xhr.open("POST", endpoint + "/chat/completions", true);
       xhr.timeout = 15000;
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
@@ -323,10 +323,23 @@
             content: "Please reply: ok"
           }
         ],
+        thinking: { type: "disabled" },
         max_tokens: 5,
         temperature: 0,
         stream: false
       }));
+    }
+
+    function normalizeModelPref(model) {
+      const normalized = String(model || "").trim().toLowerCase();
+      if (
+        normalized === "deepseek-v4-pro" ||
+        normalized === "deepseek-pro" ||
+        normalized === "deepseek pro"
+      ) {
+        return "deepseek-v4-pro";
+      }
+      return "deepseek-v4-flash";
     }
 
     window.addEventListener("load", function () {
