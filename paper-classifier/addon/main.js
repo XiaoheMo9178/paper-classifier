@@ -408,6 +408,91 @@ var PaperClassifier = {
     }
   },
 
+  buildCompletionMessage: function (summary) {
+    const successGroups = this.groupSuccessResults(summary.success || []);
+    const failureGroups = this.groupFailureResults(summary.failed || []);
+    const maxVisibleGroups = 30;
+
+    let message =
+      "分类完成：成功 " +
+      summary.success.length +
+      " 篇，失败 " +
+      summary.failed.length +
+      " 篇";
+
+    if (successGroups.length > 0) {
+      message += "\n\n成功归档：共 " + successGroups.length + " 类";
+      message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "篇");
+    }
+
+    if (failureGroups.length > 0) {
+      message += "\n\n失败原因：共 " + failureGroups.length + " 类";
+      message += this.formatGroupedCounts(failureGroups, maxVisibleGroups, "篇");
+    }
+
+    return message;
+  },
+
+  groupSuccessResults: function (successEntries) {
+    const counts = Object.create(null);
+    for (const entry of successEntries) {
+      const key = (entry.collectionPath || entry.classification || "未命名分类").trim();
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  groupFailureResults: function (failedEntries) {
+    const counts = Object.create(null);
+    for (const entry of failedEntries) {
+      const message =
+        entry.error && entry.error.message
+          ? entry.error.message
+          : String(entry.error || "未知错误");
+      const key = this.compactMessage(message, 120);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  sortCountGroups: function (counts) {
+    return Object.keys(counts)
+      .map(function (name) {
+        return { name: name, count: counts[name] };
+      })
+      .sort(function (a, b) {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
+  },
+
+  formatGroupedCounts: function (groups, maxVisibleGroups, unit) {
+    const visible = groups.slice(0, maxVisibleGroups);
+    let text = "";
+
+    visible.forEach(function (group, index) {
+      text += "\n" + (index + 1) + ". " + group.name + "： " + group.count + " " + unit;
+    });
+
+    if (groups.length > maxVisibleGroups) {
+      text += "\n... 还有 " + (groups.length - maxVisibleGroups) + " 类未显示";
+    }
+
+    return text;
+  },
+
+  compactMessage: function (message, maxLength) {
+    const normalized = String(message || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length <= maxLength) {
+      return normalized || "未知错误";
+    }
+    return normalized.slice(0, maxLength - 3) + "...";
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -443,27 +528,7 @@ var PaperClassifier = {
       return;
     }
 
-    let message = "分类完成：成功 " + summary.success.length + " 篇，失败 " + summary.failed.length + " 篇";
-
-    if (summary.success.length > 0) {
-      message += "\n\n成功列表：\n";
-      summary.success.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(无标题)";
-        const location = entry.collectionPath || entry.classification;
-        message += (index + 1) + ". " + title + " -> " + location + "\n";
-      });
-    }
-
-    if (summary.failed.length > 0) {
-      message += "\n失败列表：\n";
-      summary.failed.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(无标题)";
-        const errMsg = entry.error && entry.error.message ? entry.error.message : String(entry.error);
-        message += (index + 1) + ". " + title + " -> " + errMsg + "\n";
-      });
-    }
-
-    Services.prompt.alert(win, "Paper Classifier", message);
+    Services.prompt.alert(win, "Paper Classifier", this.buildCompletionMessage(summary));
   },
 
   openPreferences: function () {

@@ -28,6 +28,7 @@ Paper Classifier 是一个 Zotero Bootstrap 插件，面向需要批量整理文
 - 支持模型切换：`deepseek-v4-flash` / `deepseek-v4-pro`
 - 使用聚焦主题池 + 同义归并，减少批量分类时的目录碎片
 - DeepSeek V4 短输出为空时自动换另一个 V4 模型重试一次
+- 完成弹窗按分类统计篇数，不再逐篇列出长列表
 
 ## 开源信息
 
@@ -39,8 +40,8 @@ Paper Classifier 是一个 Zotero Bootstrap 插件，面向需要批量整理文
 
 | 版本 | 安装包 | 插件 ID | 界面语言 |
 |---|---|---|---|
-| 中文版 | `paper-classifier-1.1.0.xpi` | `paper-classifier@example.com` | 中文 |
-| 英文版 | `paper-classifier-1.1.0-en.xpi` | `paper-classifier-en@example.com` | 英文 |
+| 中文版 | `paper-classifier-1.1.1.xpi` | `paper-classifier@example.com` | 中文 |
+| 英文版 | `paper-classifier-1.1.1-en.xpi` | `paper-classifier-en@example.com` | 英文 |
 
 两者可并存安装（ID 不同）。
 
@@ -77,7 +78,7 @@ Paper Classifier 是一个 Zotero Bootstrap 插件，面向需要批量整理文
 2. 右键点击：`AI 分类论文`
 3. 插件读取标题与摘要并请求 DeepSeek
 4. 按 `主题根目录/聚焦一级主题/二级主题` 自动创建集合并归档
-5. 弹出结果汇总（成功/失败明细）
+5. 弹出结果汇总（成功/失败总数、分了几类、每类多少篇）
 
 ## 输出行为
 
@@ -92,14 +93,14 @@ Paper Classifier 是一个 Zotero Bootstrap 插件，面向需要批量整理文
 
 ```bash
 cd paper-classifier
-zip -r ../paper-classifier-1.1.0.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.1.1.xpi . -x '*.DS_Store'
 ```
 
 英文版：
 
 ```bash
 cd paper-classifier-en
-zip -r ../paper-classifier-1.1.0-en.xpi . -x '*.DS_Store'
+zip -r ../paper-classifier-1.1.1-en.xpi . -x '*.DS_Store'
 ```
 
 ## 常见问题
@@ -119,6 +120,6 @@ zip -r ../paper-classifier-1.1.0-en.xpi . -x '*.DS_Store'
 paper-classifier/
 ├── paper-classifier/                 # 中文版插件源码
 ├── paper-classifier-en/              # 英文版插件源码
-├── paper-classifier-1.1.0.xpi        # 中文版安装包
-└── paper-classifier-1.1.0-en.xpi     # 英文版安装包
+├── paper-classifier-1.1.1.xpi        # 中文版安装包
+└── paper-classifier-1.1.1-en.xpi     # 英文版安装包
 ```

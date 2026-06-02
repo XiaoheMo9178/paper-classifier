@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Paper Classifier",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "通过 DeepSeek V4 API 对论文进行聚焦主题分类",
   "author": "local",
   "homepage_url": "https://local.paper-classifier.plugin/",

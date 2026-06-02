@@ -408,6 +408,91 @@ var PaperClassifierEN = {
     }
   },
 
+  buildCompletionMessage: function (summary) {
+    const successGroups = this.groupSuccessResults(summary.success || []);
+    const failureGroups = this.groupFailureResults(summary.failed || []);
+    const maxVisibleGroups = 30;
+
+    let message =
+      "Classification completed: " +
+      summary.success.length +
+      " succeeded, " +
+      summary.failed.length +
+      " failed";
+
+    if (successGroups.length > 0) {
+      message += "\n\nRouted into " + successGroups.length + " categories";
+      message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "papers");
+    }
+
+    if (failureGroups.length > 0) {
+      message += "\n\nFailure reasons: " + failureGroups.length + " categories";
+      message += this.formatGroupedCounts(failureGroups, maxVisibleGroups, "papers");
+    }
+
+    return message;
+  },
+
+  groupSuccessResults: function (successEntries) {
+    const counts = Object.create(null);
+    for (const entry of successEntries) {
+      const key = (entry.collectionPath || entry.classification || "Uncategorized").trim();
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  groupFailureResults: function (failedEntries) {
+    const counts = Object.create(null);
+    for (const entry of failedEntries) {
+      const message =
+        entry.error && entry.error.message
+          ? entry.error.message
+          : String(entry.error || "Unknown error");
+      const key = this.compactMessage(message, 120);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  sortCountGroups: function (counts) {
+    return Object.keys(counts)
+      .map(function (name) {
+        return { name: name, count: counts[name] };
+      })
+      .sort(function (a, b) {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
+  },
+
+  formatGroupedCounts: function (groups, maxVisibleGroups, unit) {
+    const visible = groups.slice(0, maxVisibleGroups);
+    let text = "";
+
+    visible.forEach(function (group, index) {
+      text += "\n" + (index + 1) + ". " + group.name + ": " + group.count + " " + unit;
+    });
+
+    if (groups.length > maxVisibleGroups) {
+      text += "\n... " + (groups.length - maxVisibleGroups) + " more categories not shown";
+    }
+
+    return text;
+  },
+
+  compactMessage: function (message, maxLength) {
+    const normalized = String(message || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length <= maxLength) {
+      return normalized || "Unknown error";
+    }
+    return normalized.slice(0, maxLength - 3) + "...";
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -443,27 +528,7 @@ var PaperClassifierEN = {
       return;
     }
 
-    let message = "Classification completed: " + summary.success.length + " succeeded, " + summary.failed.length + " failed";
-
-    if (summary.success.length > 0) {
-      message += "\n\nSuccess:\n";
-      summary.success.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(Untitled)";
-        const location = entry.collectionPath || entry.classification;
-        message += (index + 1) + ". " + title + " -> " + location + "\n";
-      });
-    }
-
-    if (summary.failed.length > 0) {
-      message += "\nFailed:\n";
-      summary.failed.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(Untitled)";
-        const errMsg = entry.error && entry.error.message ? entry.error.message : String(entry.error);
-        message += (index + 1) + ". " + title + " -> " + errMsg + "\n";
-      });
-    }
-
-    Services.prompt.alert(win, "Paper Classifier EN", message);
+    Services.prompt.alert(win, "Paper Classifier EN", this.buildCompletionMessage(summary));
   },
 
   openPreferences: function () {
