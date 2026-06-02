@@ -420,6 +420,10 @@ var PaperClassifier = {
       summary.failed.length +
       " 篇";
 
+    if (summary.researchTopic) {
+      message += "\n研究题目：" + this.compactMessage(summary.researchTopic, 120);
+    }
+
     if (successGroups.length > 0) {
       message += "\n\n成功归档：共 " + successGroups.length + " 类";
       message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "篇");
@@ -493,6 +497,35 @@ var PaperClassifier = {
     return normalized.slice(0, maxLength - 3) + "...";
   },
 
+  promptForResearchTopic: function (win) {
+    const input = {
+      value: this.getGlobalPref("lastResearchTopic", "")
+    };
+    const checkState = { value: false };
+
+    const ok = Services.prompt.prompt(
+      win,
+      "Paper Classifier",
+      "请输入本次研究题目。插件将根据该题目判断每篇文献的主题作用并归档：",
+      input,
+      null,
+      checkState
+    );
+
+    if (!ok) {
+      return null;
+    }
+
+    const researchTopic = (input.value || "").trim();
+    if (!researchTopic) {
+      Services.prompt.alert(win, "Paper Classifier", "研究题目不能为空。");
+      return null;
+    }
+
+    this.setGlobalPref("lastResearchTopic", researchTopic);
+    return researchTopic;
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -520,9 +553,14 @@ var PaperClassifier = {
       return;
     }
 
+    const researchTopic = this.promptForResearchTopic(win);
+    if (!researchTopic) {
+      return;
+    }
+
     let summary;
     try {
-      summary = await processItems(items);
+      summary = await processItems(items, { researchTopic: researchTopic });
     } catch (error) {
       Services.prompt.alert(win, "Paper Classifier", "分类过程中发生错误：" + error.message);
       return;

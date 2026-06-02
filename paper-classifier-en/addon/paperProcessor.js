@@ -23,7 +23,8 @@ async function processItem(item, context) {
     abstract,
     settings.apiKey,
     settings.endpoint,
-    settings.model
+    settings.model,
+    settings.researchTopic
   );
 
   const parsed = parseClassification(classification);
@@ -43,13 +44,18 @@ async function processItem(item, context) {
  * @param {Array<Object>} items Zotero Item array
  * @returns {Promise<{success: Array<{item: Object, classification: string, collectionPath: string}>, failed: Array<{item: Object, error: Error}>}>}
  */
-async function processItems(items) {
+async function processItems(items, options) {
   const summary = {
     success: [],
-    failed: []
+    failed: [],
+    researchTopic: ""
   };
 
   const settings = readProcessorSettings();
+  if (options && options.researchTopic) {
+    settings.researchTopic = normalizeName(options.researchTopic);
+  }
+  summary.researchTopic = settings.researchTopic || "";
   const runtime = createRuntimeCache();
 
   for (let i = 0; i < items.length; i += 1) {
@@ -128,8 +134,8 @@ function parseClassification(rawClassification) {
     return normalizeParsedClassification(parts[0], parts.slice(1).join("-"));
   }
 
-  // If no "primary/secondary" format is returned, route to "Other"
-  return normalizeParsedClassification("Other", parts[0] || raw);
+  // If no "primary/secondary" format is returned, route to a fixed fallback.
+  return normalizeParsedClassification("Weakly Related or Exclude", parts[0] || raw);
 }
 
 function normalizeParsedClassification(primary, secondary) {
@@ -146,44 +152,44 @@ function canonicalizePrimaryName(value) {
 
   const rules = [
     {
-      name: "Evidence Synthesis",
-      pattern: /(evidencesynthesis|systematicreview|meta-analysis|metaanalysis|scopingreview|review|综述|荟萃)/
+      name: "Core Topic Research",
+      pattern: /(core|direct|relevant|topic|subtopic|population|setting|status|核心|直接相关|主题|子主题|人群|场景|现状)/
     },
     {
-      name: "Intervention and Trial Research",
-      pattern: /(intervention|trial|rct|randomized|randomised|experiment|effectiveness|efficacy|clinicaltrial|干预|试验|实验)/
+      name: "Background Theory and Concepts",
+      pattern: /(background|theory|concept|definition|trend|narrative|背景|理论|概念|定义|趋势|叙述)/
     },
     {
-      name: "Observational and Epidemiology Research",
-      pattern: /(observational|epidemiology|cohort|case-control|casecontrol|cross-sectional|crosssectional|survey|riskfactor|prevalence|incidence|观察|队列|横断面)/
+      name: "Methods Models and Tools",
+      pattern: /(method|model|prediction|diagnosis|screen|algorithm|validation|方法|模型|预测|诊断|筛查|算法|验证)/
     },
     {
-      name: "Measurement and Instrument Development",
-      pattern: /(measurement|instrument|scale|questionnaire|reliability|validity|psychometric|量表|问卷|信度|效度)/
+      name: "Measurement Evaluation and Indicators",
+      pattern: /(measurement|evaluation|indicator|scale|questionnaire|validity|reliability|测量|评价|指标|量表|问卷|信度|效度)/
     },
     {
-      name: "Prediction and Diagnostic Evaluation",
-      pattern: /(prediction|diagnosis|diagnostic|prognosis|screening|riskmodel|machinelearning|deeplearning|algorithm|预测|诊断|预后|筛查|机器学习)/
+      name: "Intervention Application and Practice",
+      pattern: /(intervention|application|practice|trial|implementation|effect|education|干预|应用|实践|试验|实施|效果|教育)/
     },
     {
-      name: "Mechanism and Basic Research",
-      pattern: /(mechanism|basic|pathway|molecular|cell|animal|pathology|biomarker|机制|分子|细胞|动物|病理)/
+      name: "Mechanisms and Risk Factors",
+      pattern: /(mechanism|basic|risk|factor|biomarker|experiment|association|机制|基础|风险|因素|标志物|实验|相关)/
     },
     {
-      name: "Methodology and Theory",
-      pattern: /(methodology|method|theory|framework|guideline|consensus|reportingstandard|方法|理论|框架|指南|共识)/
+      name: "Evidence Synthesis and Review",
+      pattern: /(evidence|review|metaanalysis|meta-analysis|scoping|guideline|consensus|证据|综述|系统评价|范围综述|指南|共识)/
     },
     {
-      name: "Application Systems and Resource Building",
-      pattern: /(application|system|platform|software|engineering|implementation|deployment|dataset|database|resource|corpus|系统|平台|数据集|数据库|资源)/
+      name: "Data Resources and Systems",
+      pattern: /(data|dataset|database|resource|system|platform|software|decision|tool|数据|数据集|数据库|资源|系统|平台|软件|决策|工具)/
     },
     {
-      name: "Policy Ethics and Practice Translation",
-      pattern: /(policy|ethics|economic|cost|qualityimprovement|practice|management|education|training|translation|政策|伦理|经济|实践|教育|培训)/
+      name: "Policy Ethics and Translation",
+      pattern: /(policy|ethics|privacy|economic|training|quality|translation|政策|伦理|隐私|经济|培训|质量|转化)/
     },
     {
-      name: "Other",
-      pattern: /(other|uncertain|其他|待判定)/
+      name: "Weakly Related or Exclude",
+      pattern: /(weak|irrelevant|exclude|unrelated|uncertain|弱相关|不相关|排除|待判定)/
     }
   ];
 
@@ -193,7 +199,7 @@ function canonicalizePrimaryName(value) {
     }
   }
 
-  return name || "Other";
+  return "Weakly Related or Exclude";
 }
 
 function normalizeSecondaryName(value) {
@@ -219,7 +225,7 @@ function canonicalizeSecondaryName(primary, rawPrimary, rawSecondary) {
       : rawSecondaryName;
   const key = normalizeTaxonomyKey(lookupSource);
   const taxonomy = getSecondaryTaxonomy();
-  const rules = taxonomy[primary] || taxonomy.Other;
+  const rules = taxonomy[primary] || taxonomy["Weakly Related or Exclude"];
 
   for (const rule of rules) {
     if (rule.pattern && rule.pattern.test(key)) {
@@ -232,96 +238,83 @@ function canonicalizeSecondaryName(primary, rawPrimary, rawSecondary) {
 
 function getSecondaryTaxonomy() {
   return {
-    "Intervention and Trial Research": [
-      { name: "Randomized Controlled Trial", pattern: /(random|rct|randomizedcontrolled|randomisedcontrolled|随机|随机对照)/ },
-      { name: "Trial Protocol", pattern: /(protocol|registration|trialdesign|studyprotocol|方案|注册|设计方案)/ },
-      { name: "Behavioral and Educational Intervention", pattern: /(education|training|behavior|behaviour|lifestyle|selfmanagement|nursing|rehabilitation|exercise|psychological|cognitive|教育|培训|行为|自我管理|护理|康复|运动|心理|认知)/ },
-      { name: "Implementation and Adherence", pattern: /(implementation|feasibility|adherence|acceptability|uptake|实施|可行性|依从性|接受度)/ },
-      { name: "Nonrandomized Intervention", pattern: /(quasi|nonrandom|beforeafter|singlearm|准实验|非随机|前后对照|单组)/ },
-      { name: "Intervention Effect Evaluation", pattern: /(intervention|trial|experiment|effect|efficacy|effectiveness|treatment|干预|试验|实验|治疗|效果|疗效)/ },
+    "Core Topic Research": [
+      { name: "Directly Relevant Study", pattern: /(direct|core|main|target|直接|核心|主题|目标|主要)/ },
+      { name: "Subtopic Extension", pattern: /(subtopic|extension|subgroup|子主题|扩展|分支|亚组)/ },
+      { name: "Population and Setting", pattern: /(population|patient|setting|context|人群|患者|对象|场景|环境)/ },
+      { name: "Problem Status", pattern: /(status|burden|prevalence|incidence|现状|负担|流行|患病率|发生率)/ },
       { name: "General Study", pattern: /(general|other|综合)/ }
     ],
-    "Observational and Epidemiology Research": [
-      { name: "Cohort Study", pattern: /(cohort|longitudinal|followup|prospective|retrospective|队列|随访|纵向)/ },
-      { name: "Case-Control Study", pattern: /(casecontrol|case-control|病例对照)/ },
-      { name: "Cross-Sectional Survey", pattern: /(crosssectional|cross-sectional|survey|questionnairesurvey|横断面|调查|问卷调查)/ },
-      { name: "Prevalence and Incidence", pattern: /(prevalence|incidence|morbidity|患病率|发生率|流行率|发病率)/ },
-      { name: "Real-World Study", pattern: /(realworld|registry|ehr|emr|electronicmedical|真实世界|登记|电子病历)/ },
-      { name: "Association and Risk Factors", pattern: /(riskfactor|association|correlat|determinant|factor|相关|因素|危险因素|影响因素|关联)/ },
+    "Background Theory and Concepts": [
+      { name: "Theory Framework", pattern: /(theory|framework|model|理论|框架|模型)/ },
+      { name: "Concept Definition", pattern: /(concept|definition|terminology|概念|定义|术语)/ },
+      { name: "Development Trend", pattern: /(trend|progress|development|趋势|进展|发展)/ },
+      { name: "Narrative Review", pattern: /(narrative|overview|background|叙述|背景综述|一般综述)/ },
       { name: "General Study", pattern: /(general|other|综合)/ }
     ],
-    "Evidence Synthesis": [
+    "Methods Models and Tools": [
+      { name: "Model Validation", pattern: /(validation|calibration|验证|校准|外部验证)/ },
+      { name: "Research Method", pattern: /(method|methodology|design|statistical|方法|方法学|设计|统计)/ },
+      { name: "Prediction Model", pattern: /(prediction|prognosis|riskmodel|预测|预后|风险模型)/ },
+      { name: "Diagnosis and Screening", pattern: /(diagnosis|screening|诊断|筛查|筛检)/ },
+      { name: "Algorithm Method", pattern: /(algorithm|machinelearning|deeplearning|ai|算法|机器学习|深度学习|人工智能)/ },
+      { name: "General Study", pattern: /(general|other|综合)/ }
+    ],
+    "Measurement Evaluation and Indicators": [
+      { name: "Scale Development", pattern: /(development|develop|construction|开发|编制|构建)/ },
+      { name: "Validity and Reliability", pattern: /(validity|reliability|validation|psychometric|信度|效度|验证)/ },
+      { name: "Evaluation Indicator", pattern: /(indicator|index|evaluation|指标|评价体系|指标体系)/ },
+      { name: "Measurement Method", pattern: /(measurement|questionnaire|instrument|测量|问卷|工具)/ },
+      { name: "General Study", pattern: /(general|other|综合)/ }
+    ],
+    "Intervention Application and Practice": [
+      { name: "Randomized Controlled Trial", pattern: /(random|rct|randomizedcontrolled|randomisedcontrolled|随机|随机对照|对照试验)/ },
+      { name: "Behavioral and Educational Intervention", pattern: /(education|training|behavior|behaviour|lifestyle|selfmanagement|nursing|rehabilitation|exercise|psychological|教育|培训|行为|自我管理|护理|康复|运动|心理)/ },
+      { name: "Implementation Translation", pattern: /(implementation|translation|adherence|feasibility|实施|转化|推广|依从|可行性)/ },
+      { name: "Effect Evaluation", pattern: /(effect|efficacy|effectiveness|evaluation|效果|疗效|评价)/ },
+      { name: "Intervention Study", pattern: /(intervention|trial|treatment|practice|干预|试验|治疗|实践)/ },
+      { name: "General Study", pattern: /(general|other|综合)/ }
+    ],
+    "Mechanisms and Risk Factors": [
+      { name: "Mechanism Study", pattern: /(mechanism|pathway|pathophysiology|机制|通路|病理生理)/ },
+      { name: "Risk Factors", pattern: /(risk|riskfactor|determinant|风险|危险因素|影响因素)/ },
+      { name: "Biomarker", pattern: /(biomarker|marker|标志物|生物标志)/ },
+      { name: "Basic Experiment", pattern: /(basic|experiment|cell|animal|molecular|基础|实验|细胞|动物|分子)/ },
+      { name: "Association Factors", pattern: /(association|correlation|factor|相关|关联|因素)/ },
+      { name: "General Study", pattern: /(general|other|综合)/ }
+    ],
+    "Evidence Synthesis and Review": [
       { name: "Meta-Analysis", pattern: /(metaanalysis|meta|荟萃|meta分析)/ },
       { name: "Scoping Review", pattern: /(scoping|范围综述)/ },
-      { name: "Evidence Map", pattern: /(evidencemap|evidencegap|mapping|证据图谱|证据地图)/ },
-      { name: "Umbrella Review", pattern: /(umbrella|overviewofreviews|伞状)/ },
-      { name: "Review Methodology", pattern: /(methodology|quality|bias|prisma|reporting|方法|质量评价|偏倚|报告)/ },
-      { name: "Systematic Review", pattern: /(systematicreview|review|evidencesynthesis|系统评价|系统综述|综述)/ },
-      { name: "General Study", pattern: /(general|other|综合)/ }
-    ],
-    "Methodology and Theory": [
-      { name: "Qualitative Study", pattern: /(qualitative|interview|focusgroup|thematic|groundedtheory|质性|访谈|扎根理论|主题分析)/ },
-      { name: "Theory Model", pattern: /(theory|model|framework|conceptual|理论|模型|框架|概念)/ },
-      { name: "Study Protocol", pattern: /(protocol|design|studyprotocol|方案|设计|计划)/ },
       { name: "Guideline and Consensus", pattern: /(guideline|consensus|recommendation|指南|共识|推荐)/ },
-      { name: "Reporting Standard", pattern: /(reporting|checklist|statement|报告规范|报告标准|清单)/ },
-      { name: "Methodology Study", pattern: /(methodology|method|statistical|方法学|方法|统计方法)/ },
+      { name: "Systematic Review", pattern: /(systematicreview|review|系统评价|系统综述|综述)/ },
       { name: "General Study", pattern: /(general|other|综合)/ }
     ],
-    "Measurement and Instrument Development": [
-      { name: "Validity and Reliability", pattern: /(validity|reliability|validation|psychometric|信度|效度|验证)/ },
-      { name: "Scale Development", pattern: /(development|develop|construction|开发|编制|构建)/ },
-      { name: "Questionnaire Instrument", pattern: /(questionnaire|surveyinstrument|instrument|问卷|调查表|工具)/ },
-      { name: "Indicator System", pattern: /(indicator|index|指标|指标体系|评价体系)/ },
-      { name: "Measurement Method Comparison", pattern: /(measurement|comparison|agreement|测量|比较|一致性)/ },
-      { name: "General Study", pattern: /(general|other|综合)/ }
-    ],
-    "Mechanism and Basic Research": [
-      { name: "Molecular Mechanism", pattern: /(molecular|gene|protein|expression|分子|基因|蛋白|表达|信号)/ },
-      { name: "Cell Experiment", pattern: /(cell|invitro|细胞|体外)/ },
-      { name: "Animal Experiment", pattern: /(animal|mouse|mice|rat|动物|小鼠|大鼠)/ },
-      { name: "Pathophysiology", pattern: /(pathology|pathophysiology|physiology|病理|生理|病理生理)/ },
-      { name: "Biomarker", pattern: /(biomarker|marker|标志物|生物标志)/ },
-      { name: "Pathway Study", pattern: /(pathway|axis|mechanism|通路|途径|机制)/ },
-      { name: "General Study", pattern: /(general|other|综合)/ }
-    ],
-    "Prediction and Diagnostic Evaluation": [
-      { name: "Diagnostic Accuracy", pattern: /(diagnos|accuracy|sensitivity|specificity|诊断|准确性|敏感性|特异性)/ },
-      { name: "Screening Tool", pattern: /(screening|screen|筛查|筛检)/ },
-      { name: "Prognostic Evaluation", pattern: /(prognosis|survival|outcome|预后|生存|结局预测)/ },
-      { name: "Risk Score", pattern: /(riskscore|scoring|score|risk|风险评分|评分)/ },
-      { name: "Model Validation", pattern: /(validation|calibration|验证|外部验证|校准)/ },
-      { name: "Prediction Model", pattern: /(prediction|model|machinelearning|deeplearning|algorithm|预测|模型|机器学习|深度学习|算法)/ },
-      { name: "General Study", pattern: /(general|other|综合)/ }
-    ],
-    "Application Systems and Resource Building": [
-      { name: "Decision Support System", pattern: /(decisionsupport|cdss|辅助决策|决策支持)/ },
-      { name: "Database and Dataset", pattern: /(dataset|database|registry|cohortdata|数据库|数据集|登记)/ },
-      { name: "Algorithm Application", pattern: /(algorithm|ai|artificialintelligence|machinelearning|deeplearning|application|算法|人工智能|机器学习|深度学习|应用)/ },
-      { name: "Resource Building", pattern: /(resource|corpus|knowledgebase|ontology|资源|语料库|知识库|图谱)/ },
-      { name: "Tool Development", pattern: /(tool|toolkit|development|工具|插件|开发)/ },
+    "Data Resources and Systems": [
+      { name: "Dataset Resource", pattern: /(dataset|database|resource|registry|数据库|数据集|资源|登记)/ },
       { name: "Software Platform", pattern: /(software|platform|system|app|软件|平台|系统|应用)/ },
+      { name: "Decision Support", pattern: /(decisionsupport|cdss|辅助决策|决策支持)/ },
+      { name: "Tool Development", pattern: /(tool|toolkit|development|工具|插件|开发)/ },
       { name: "General Study", pattern: /(general|other|综合)/ }
     ],
-    "Policy Ethics and Practice Translation": [
-      { name: "Health Economics", pattern: /(economic|cost|costeffectiveness|healtheconomics|经济|成本|费用|卫生经济)/ },
+    "Policy Ethics and Translation": [
+      { name: "Policy Management", pattern: /(policy|management|governance|regulation|政策|管理|治理|监管)/ },
       { name: "Ethics and Privacy", pattern: /(ethic|privacy|security|fairness|伦理|隐私|安全|公平)/ },
+      { name: "Health Economics", pattern: /(economic|cost|costeffectiveness|healtheconomics|经济|成本|费用|卫生经济)/ },
       { name: "Education and Training", pattern: /(education|training|curriculum|teaching|教育|培训|课程|教学)/ },
       { name: "Quality Improvement", pattern: /(qualityimprovement|qualitycontrol|workflow|质量改进|质量控制|流程)/ },
-      { name: "Implementation Translation", pattern: /(implementation|translation|adoption|转化|实施|推广|落地)/ },
-      { name: "Policy and Management", pattern: /(policy|management|governance|regulation|政策|管理|治理|监管)/ },
       { name: "General Study", pattern: /(general|other|综合)/ }
     ],
-    Other: [
-      { name: "Editorial and Commentary", pattern: /(editorial|comment|perspective|viewpoint|letter|评论|社论|观点)/ },
-      { name: "Background Review", pattern: /(narrative|background|overview|背景|叙述综述|一般综述)/ },
+    "Weakly Related or Exclude": [
+      { name: "Weakly Related", pattern: /(weak|indirect|marginal|弱相关|间接|边缘)/ },
+      { name: "Irrelevant", pattern: /(irrelevant|exclude|unrelated|不相关|无关|排除)/ },
       { name: "Uncertain", pattern: /(uncertain|other|unknown|不确定|待判定|其他)/ }
     ]
   };
 }
 
 function getDefaultSecondaryName(primary) {
-  if (primary === "Other") {
+  if (primary === "Weakly Related or Exclude") {
     return "Uncertain";
   }
   return "General Study";

@@ -420,6 +420,10 @@ var PaperClassifierEN = {
       summary.failed.length +
       " failed";
 
+    if (summary.researchTopic) {
+      message += "\nResearch topic: " + this.compactMessage(summary.researchTopic, 120);
+    }
+
     if (successGroups.length > 0) {
       message += "\n\nRouted into " + successGroups.length + " categories";
       message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "papers");
@@ -493,6 +497,35 @@ var PaperClassifierEN = {
     return normalized.slice(0, maxLength - 3) + "...";
   },
 
+  promptForResearchTopic: function (win) {
+    const input = {
+      value: this.getGlobalPref("lastResearchTopic", "")
+    };
+    const checkState = { value: false };
+
+    const ok = Services.prompt.prompt(
+      win,
+      "Paper Classifier EN",
+      "Enter the current research topic. The plugin will classify each paper by its role in this topic:",
+      input,
+      null,
+      checkState
+    );
+
+    if (!ok) {
+      return null;
+    }
+
+    const researchTopic = (input.value || "").trim();
+    if (!researchTopic) {
+      Services.prompt.alert(win, "Paper Classifier EN", "Research topic is required.");
+      return null;
+    }
+
+    this.setGlobalPref("lastResearchTopic", researchTopic);
+    return researchTopic;
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -520,9 +553,14 @@ var PaperClassifierEN = {
       return;
     }
 
+    const researchTopic = this.promptForResearchTopic(win);
+    if (!researchTopic) {
+      return;
+    }
+
     let summary;
     try {
-      summary = await processItems(items);
+      summary = await processItems(items, { researchTopic: researchTopic });
     } catch (error) {
       Services.prompt.alert(win, "Paper Classifier EN", "Error during classification: " + error.message);
       return;
