@@ -5,20 +5,29 @@
  * @param {string} apiKey
  * @param {string} endpoint
  * @param {string} model
+ * @param {string} researchTopic
  * @returns {Promise<string>}
  */
-async function classifyPaper(title, abstract, apiKey, endpoint, model) {
+var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_ENDPOINT = "https://api.deepseek.com";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_CHAT_PATH = "/chat/completions";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL = "deepseek-v4-flash";
+var PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
+
+async function classifyPaper(title, abstract, apiKey, endpoint, model, researchTopic) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error("API Key is required");
   }
   if (!title || !title.trim()) {
     throw new Error("Paper title is required");
   }
+  if (!researchTopic || !researchTopic.trim()) {
+    throw new Error("Research topic is required");
+  }
 
   const trimmedApiKey = apiKey.trim();
-  const baseEndpoint = (endpoint || "https://api.deepseek.com").trim().replace(/\/+$/, "");
-  const requestedModel = (model || "deepseek-chat").trim();
-  const url = baseEndpoint + "/v1/chat/completions";
+  const baseEndpoint = (endpoint || PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_ENDPOINT).trim().replace(/\/+$/, "");
+  const requestedModel = normalizeDeepSeekModel(model);
+  const url = baseEndpoint + PAPER_CLASSIFIER_EN_DEEPSEEK_CHAT_PATH;
 
   const buildBody = function (targetModel) {
     return {
@@ -26,16 +35,23 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
       messages: [
         {
           role: "system",
-          content: "You are an expert in classifying research papers by research theme (not by discipline). Classify using study design, evidence type, objective, and core question. Typical themes include randomized controlled trial, systematic review, meta-analysis, theoretical research, scale development and validation, mechanism study, intervention study, etc., and you may create better-fit theme names when needed. Output only the classification with no explanation. Output format must be exactly: Primary Theme/Secondary Theme. If information is insufficient, output: Other/Uncertain."
+          content: buildFocusedTaxonomyPrompt()
         },
         {
           role: "user",
-          content: "Paper title: " + title + "\n\nAbstract: " + (abstract || "")
+          content:
+            "Current research topic: " +
+            researchTopic.trim() +
+            "\n\nClassify the following paper by its role in this research topic and return only JSON.\n\nPaper title: " +
+            title +
+            "\n\nAbstract: " +
+            (abstract || "")
         }
       ],
-      // Reasoner may return empty final content with low output budget
-      max_tokens: 128,
-      temperature: 0.1,
+      thinking: { type: "disabled" },
+      response_format: { type: "json_object" },
+      max_tokens: 160,
+      temperature: 0,
       stream: false
     };
   };
@@ -43,12 +59,16 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   let parsed = await requestCompletion(url, trimmedApiKey, buildBody(requestedModel));
   let classification = extractClassification(parsed);
 
-  // Compatibility fallback for deepseek-reasoner empty content
-  if (!classification && requestedModel === "deepseek-reasoner") {
+  // Retry once with the other V4 model if the short classification is empty.
+  if (!classification) {
+    const fallbackModel =
+      requestedModel === PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL
+        ? PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL
+        : PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL;
     if (typeof Zotero !== "undefined" && Zotero && typeof Zotero.debug === "function") {
-      Zotero.debug("[PaperClassifier] deepseek-reasoner returned empty content, fallback to deepseek-chat");
+      Zotero.debug("[PaperClassifier] " + requestedModel + " returned empty classification, fallback to " + fallbackModel);
     }
-    parsed = await requestCompletion(url, trimmedApiKey, buildBody("deepseek-chat"));
+    parsed = await requestCompletion(url, trimmedApiKey, buildBody(fallbackModel));
     classification = extractClassification(parsed);
   }
 
@@ -64,6 +84,50 @@ async function classifyPaper(title, abstract, apiKey, endpoint, model) {
   }
 
   return classification;
+}
+
+function normalizeDeepSeekModel(model) {
+  const raw = String(model || "").trim();
+  const normalized = raw.toLowerCase();
+
+  if (
+    normalized === "deepseek-v4-pro" ||
+    normalized === "deepseek-pro" ||
+    normalized === "deepseek pro"
+  ) {
+    return PAPER_CLASSIFIER_EN_DEEPSEEK_PRO_MODEL;
+  }
+
+  if (
+    normalized === "deepseek-v4-flash" ||
+    normalized === "deepseek-flash" ||
+    normalized === "deepseek flash" ||
+    normalized === "deepseek-chat" ||
+    normalized === "deepseek-reasoner"
+  ) {
+    return PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL;
+  }
+
+  return PAPER_CLASSIFIER_EN_DEEPSEEK_DEFAULT_MODEL;
+}
+
+function buildFocusedTaxonomyPrompt() {
+  return [
+    "You are an academic literature taxonomy expert for a concrete research project. The user provides the current research topic. You must classify each paper by its role relative to that topic, not by creating categories from disease names, samples, regions, datasets, dosages, author institutions, or overly specific paper objects.",
+    "You must choose both primary and secondary from the controlled taxonomy below. Primary and secondary labels must be exactly from the listed labels. Do not invent free-form labels.",
+    "Core Topic Research: Directly Relevant Study, Subtopic Extension, Population and Setting, Problem Status, General Study.",
+    "Background Theory and Concepts: Theory Framework, Concept Definition, Development Trend, Narrative Review, General Study.",
+    "Methods Models and Tools: Research Method, Prediction Model, Diagnosis and Screening, Algorithm Method, Model Validation, General Study.",
+    "Measurement Evaluation and Indicators: Scale Development, Validity and Reliability, Evaluation Indicator, Measurement Method, General Study.",
+    "Intervention Application and Practice: Intervention Study, Randomized Controlled Trial, Behavioral and Educational Intervention, Implementation Translation, Effect Evaluation, General Study.",
+    "Mechanisms and Risk Factors: Mechanism Study, Risk Factors, Biomarker, Basic Experiment, Association Factors, General Study.",
+    "Evidence Synthesis and Review: Systematic Review, Meta-Analysis, Scoping Review, Guideline and Consensus, General Study.",
+    "Data Resources and Systems: Dataset Resource, Software Platform, Decision Support, Tool Development, General Study.",
+    "Policy Ethics and Translation: Policy Management, Ethics and Privacy, Health Economics, Education and Training, Quality Improvement, General Study.",
+    "Weakly Related or Exclude: Weakly Related, Irrelevant, Uncertain.",
+    "Priority: first judge the relationship between the paper and the user's research topic, then choose the paper's role in that project. Directly relevant papers should usually go to Core Topic Research. Papers that mainly provide methods, measures, mechanisms, evidence reviews, data systems, or policy background should go to the corresponding role category. Clearly unrelated papers go to Weakly Related or Exclude.",
+    "Output strict JSON only, with no Markdown and no explanation. Format: {\"primary\":\"Primary Theme\",\"secondary\":\"Secondary Theme\"}."
+  ].join("\n");
 }
 
 function requestCompletion(url, apiKey, body) {
@@ -190,7 +254,8 @@ function normalizeClassification(text) {
   // Clean think blocks, code blocks, and common prefixes
   normalized = normalized
     .replace(/<think>[\s\S]*?<\/think>/gi, "\n")
-    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
     .replace(/^(classification|category|topic)[:：]\s*/i, "")
     .trim();
 
@@ -198,20 +263,25 @@ function normalizeClassification(text) {
     return "";
   }
 
-  const slashMatch = normalized.match(/([^\s\/:;,.\n]+)\s*\/\s*([^\s\/:;,.\n]+)/);
-  if (slashMatch) {
-    return (slashMatch[1] + "/" + slashMatch[2]).trim();
+  const jsonClassification = extractJSONClassification(normalized);
+  if (jsonClassification) {
+    return jsonClassification;
+  }
+
+  const slashParts = normalized
+    .split(/[\/／|｜\\]+/)
+    .map(function (part) {
+      return normalizeClassificationPart(part);
+    })
+    .filter(Boolean);
+  if (slashParts.length >= 2) {
+    return slashParts[0] + "/" + slashParts.slice(1).join("-");
   }
 
   const lines = normalized
     .split("\n")
     .map(function (line) {
-      return line
-        .trim()
-        .replace(/^[-*•\d\.\)\(]+\s*/, "")
-        .replace(/^(classification|category|topic)[:：]\s*/i, "")
-        .replace(/[;,.]+$/, "")
-        .trim();
+      return normalizeClassificationPart(line);
     })
     .filter(Boolean);
 
@@ -220,4 +290,48 @@ function normalizeClassification(text) {
   }
 
   return "";
+}
+
+function extractJSONClassification(text) {
+  const candidates = [text];
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch && objectMatch[0] !== text) {
+    candidates.push(objectMatch[0]);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      const primary = getJSONText(parsed, ["primary", "primaryTheme", "Primary Theme", "category"]);
+      const secondary = getJSONText(parsed, ["secondary", "secondaryTheme", "Secondary Theme", "topic"]);
+      if (primary && secondary) {
+        return normalizeClassificationPart(primary) + "/" + normalizeClassificationPart(secondary);
+      }
+    } catch (e) {}
+  }
+
+  return "";
+}
+
+function getJSONText(obj, keys) {
+  if (!obj || typeof obj !== "object") {
+    return "";
+  }
+
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null) {
+      return String(obj[key]);
+    }
+  }
+
+  return "";
+}
+
+function normalizeClassificationPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^[-*•\d\.\)\(]+\s*/, "")
+    .replace(/^(classification|category|topic|primary|secondary)[:：]\s*/i, "")
+    .replace(/[;,.]+$/, "")
+    .trim();
 }

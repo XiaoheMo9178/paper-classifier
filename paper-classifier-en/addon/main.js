@@ -15,6 +15,7 @@ var PaperClassifierEN = {
   preferencePaneKey: "paper-classifier-en-prefpane",
   prefPrefix: "extensions.paper-classifier-en.",
   prefDefaultEndpoint: "https://api.deepseek.com",
+  prefDefaultModel: "deepseek-v4-flash",
   preferencePaneRegistering: false,
   preferencePaneRetryCount: 0,
   preferencePaneRetryMax: 60,
@@ -53,6 +54,18 @@ var PaperClassifierEN = {
     Zotero.Prefs.set(this.prefPrefix + key, value, true);
   },
 
+  normalizeModelPref: function (model) {
+    const normalized = String(model || "").trim().toLowerCase();
+    if (
+      normalized === "deepseek-v4-pro" ||
+      normalized === "deepseek-pro" ||
+      normalized === "deepseek pro"
+    ) {
+      return "deepseek-v4-pro";
+    }
+    return this.prefDefaultModel;
+  },
+
   onPreferencePaneLoad: function (prefWin) {
     const doc = prefWin && prefWin.document ? prefWin.document : null;
     if (!doc) {
@@ -72,7 +85,9 @@ var PaperClassifierEN = {
     this.setGlobalPref("apiEndpoint", this.prefDefaultEndpoint);
 
     apiKeyEl.value = this.getGlobalPref("apiKey", "");
-    modelEl.value = this.getGlobalPref("model", "deepseek-chat");
+    const model = this.normalizeModelPref(this.getGlobalPref("model", this.prefDefaultModel));
+    modelEl.value = model;
+    this.setGlobalPref("model", model);
     collectionRootEl.value = this.getGlobalPref("collectionRoot", "AI Theme Classification");
     keepOriginalEl.checked = !!this.getGlobalPref("keepOriginalCollections", false);
     statusEl.value = "";
@@ -91,7 +106,7 @@ var PaperClassifierEN = {
     });
 
     modelEl.addEventListener("command", () => {
-      this.setGlobalPref("model", modelEl.value || "deepseek-chat");
+      this.setGlobalPref("model", this.normalizeModelPref(modelEl.value));
     });
 
     collectionRootEl.addEventListener("input", () => {
@@ -129,7 +144,7 @@ var PaperClassifierEN = {
     }
 
     const apiKey = (apiKeyEl.value || "").trim();
-    const model = modelEl.value || "deepseek-chat";
+    const model = this.normalizeModelPref(modelEl.value);
     const collectionRoot = (collectionRootEl.value || "").trim() || "AI Theme Classification";
     const keepOriginalCollections = !!keepOriginalEl.checked;
 
@@ -150,7 +165,7 @@ var PaperClassifierEN = {
     statusEl.style.color = "#6b7280";
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", this.prefDefaultEndpoint + "/v1/chat/completions", true);
+    xhr.open("POST", this.prefDefaultEndpoint + "/chat/completions", true);
     xhr.timeout = 15000;
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
@@ -195,6 +210,7 @@ var PaperClassifierEN = {
           content: "Please reply: ok"
         }
       ],
+      thinking: { type: "disabled" },
       max_tokens: 5,
       temperature: 0,
       stream: false
@@ -392,6 +408,124 @@ var PaperClassifierEN = {
     }
   },
 
+  buildCompletionMessage: function (summary) {
+    const successGroups = this.groupSuccessResults(summary.success || []);
+    const failureGroups = this.groupFailureResults(summary.failed || []);
+    const maxVisibleGroups = 30;
+
+    let message =
+      "Classification completed: " +
+      summary.success.length +
+      " succeeded, " +
+      summary.failed.length +
+      " failed";
+
+    if (summary.researchTopic) {
+      message += "\nResearch topic: " + this.compactMessage(summary.researchTopic, 120);
+    }
+
+    if (successGroups.length > 0) {
+      message += "\n\nRouted into " + successGroups.length + " categories";
+      message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "papers");
+    }
+
+    if (failureGroups.length > 0) {
+      message += "\n\nFailure reasons: " + failureGroups.length + " categories";
+      message += this.formatGroupedCounts(failureGroups, maxVisibleGroups, "papers");
+    }
+
+    return message;
+  },
+
+  groupSuccessResults: function (successEntries) {
+    const counts = Object.create(null);
+    for (const entry of successEntries) {
+      const key = (entry.collectionPath || entry.classification || "Uncategorized").trim();
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  groupFailureResults: function (failedEntries) {
+    const counts = Object.create(null);
+    for (const entry of failedEntries) {
+      const message =
+        entry.error && entry.error.message
+          ? entry.error.message
+          : String(entry.error || "Unknown error");
+      const key = this.compactMessage(message, 120);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  sortCountGroups: function (counts) {
+    return Object.keys(counts)
+      .map(function (name) {
+        return { name: name, count: counts[name] };
+      })
+      .sort(function (a, b) {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
+  },
+
+  formatGroupedCounts: function (groups, maxVisibleGroups, unit) {
+    const visible = groups.slice(0, maxVisibleGroups);
+    let text = "";
+
+    visible.forEach(function (group, index) {
+      text += "\n" + (index + 1) + ". " + group.name + ": " + group.count + " " + unit;
+    });
+
+    if (groups.length > maxVisibleGroups) {
+      text += "\n... " + (groups.length - maxVisibleGroups) + " more categories not shown";
+    }
+
+    return text;
+  },
+
+  compactMessage: function (message, maxLength) {
+    const normalized = String(message || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length <= maxLength) {
+      return normalized || "Unknown error";
+    }
+    return normalized.slice(0, maxLength - 3) + "...";
+  },
+
+  promptForResearchTopic: function (win) {
+    const input = {
+      value: this.getGlobalPref("lastResearchTopic", "")
+    };
+    const checkState = { value: false };
+
+    const ok = Services.prompt.prompt(
+      win,
+      "Paper Classifier EN",
+      "Enter the current research topic. The plugin will classify each paper by its role in this topic:",
+      input,
+      null,
+      checkState
+    );
+
+    if (!ok) {
+      return null;
+    }
+
+    const researchTopic = (input.value || "").trim();
+    if (!researchTopic) {
+      Services.prompt.alert(win, "Paper Classifier EN", "Research topic is required.");
+      return null;
+    }
+
+    this.setGlobalPref("lastResearchTopic", researchTopic);
+    return researchTopic;
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -419,35 +553,20 @@ var PaperClassifierEN = {
       return;
     }
 
+    const researchTopic = this.promptForResearchTopic(win);
+    if (!researchTopic) {
+      return;
+    }
+
     let summary;
     try {
-      summary = await processItems(items);
+      summary = await processItems(items, { researchTopic: researchTopic });
     } catch (error) {
       Services.prompt.alert(win, "Paper Classifier EN", "Error during classification: " + error.message);
       return;
     }
 
-    let message = "Classification completed: " + summary.success.length + " succeeded, " + summary.failed.length + " failed";
-
-    if (summary.success.length > 0) {
-      message += "\n\nSuccess:\n";
-      summary.success.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(Untitled)";
-        const location = entry.collectionPath || entry.classification;
-        message += (index + 1) + ". " + title + " -> " + location + "\n";
-      });
-    }
-
-    if (summary.failed.length > 0) {
-      message += "\nFailed:\n";
-      summary.failed.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(Untitled)";
-        const errMsg = entry.error && entry.error.message ? entry.error.message : String(entry.error);
-        message += (index + 1) + ". " + title + " -> " + errMsg + "\n";
-      });
-    }
-
-    Services.prompt.alert(win, "Paper Classifier EN", message);
+    Services.prompt.alert(win, "Paper Classifier EN", this.buildCompletionMessage(summary));
   },
 
   openPreferences: function () {

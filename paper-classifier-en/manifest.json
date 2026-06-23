@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Paper Classifier EN",
-  "version": "1.0.0",
-  "description": "Automatically classify papers by research theme with the DeepSeek API",
+  "version": "1.2.0",
+  "description": "Classify papers by research-topic role with the DeepSeek V4 API",
   "author": "local",
   "homepage_url": "https://local.paper-classifier-en.plugin/",
   "icons": {

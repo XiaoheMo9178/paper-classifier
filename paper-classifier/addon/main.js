@@ -15,6 +15,7 @@ var PaperClassifier = {
   preferencePaneKey: "paper-classifier-prefpane",
   prefPrefix: "extensions.paper-classifier.",
   prefDefaultEndpoint: "https://api.deepseek.com",
+  prefDefaultModel: "deepseek-v4-flash",
   preferencePaneRegistering: false,
   preferencePaneRetryCount: 0,
   preferencePaneRetryMax: 60,
@@ -53,6 +54,18 @@ var PaperClassifier = {
     Zotero.Prefs.set(this.prefPrefix + key, value, true);
   },
 
+  normalizeModelPref: function (model) {
+    const normalized = String(model || "").trim().toLowerCase();
+    if (
+      normalized === "deepseek-v4-pro" ||
+      normalized === "deepseek-pro" ||
+      normalized === "deepseek pro"
+    ) {
+      return "deepseek-v4-pro";
+    }
+    return this.prefDefaultModel;
+  },
+
   onPreferencePaneLoad: function (prefWin) {
     const doc = prefWin && prefWin.document ? prefWin.document : null;
     if (!doc) {
@@ -72,7 +85,9 @@ var PaperClassifier = {
     this.setGlobalPref("apiEndpoint", this.prefDefaultEndpoint);
 
     apiKeyEl.value = this.getGlobalPref("apiKey", "");
-    modelEl.value = this.getGlobalPref("model", "deepseek-chat");
+    const model = this.normalizeModelPref(this.getGlobalPref("model", this.prefDefaultModel));
+    modelEl.value = model;
+    this.setGlobalPref("model", model);
     collectionRootEl.value = this.getGlobalPref("collectionRoot", "AI主题分类");
     keepOriginalEl.checked = !!this.getGlobalPref("keepOriginalCollections", false);
     statusEl.value = "";
@@ -91,7 +106,7 @@ var PaperClassifier = {
     });
 
     modelEl.addEventListener("command", () => {
-      this.setGlobalPref("model", modelEl.value || "deepseek-chat");
+      this.setGlobalPref("model", this.normalizeModelPref(modelEl.value));
     });
 
     collectionRootEl.addEventListener("input", () => {
@@ -129,7 +144,7 @@ var PaperClassifier = {
     }
 
     const apiKey = (apiKeyEl.value || "").trim();
-    const model = modelEl.value || "deepseek-chat";
+    const model = this.normalizeModelPref(modelEl.value);
     const collectionRoot = (collectionRootEl.value || "").trim() || "AI主题分类";
     const keepOriginalCollections = !!keepOriginalEl.checked;
 
@@ -150,7 +165,7 @@ var PaperClassifier = {
     statusEl.style.color = "#6b7280";
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", this.prefDefaultEndpoint + "/v1/chat/completions", true);
+    xhr.open("POST", this.prefDefaultEndpoint + "/chat/completions", true);
     xhr.timeout = 15000;
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
@@ -195,6 +210,7 @@ var PaperClassifier = {
           content: "请回复：ok"
         }
       ],
+      thinking: { type: "disabled" },
       max_tokens: 5,
       temperature: 0,
       stream: false
@@ -392,6 +408,124 @@ var PaperClassifier = {
     }
   },
 
+  buildCompletionMessage: function (summary) {
+    const successGroups = this.groupSuccessResults(summary.success || []);
+    const failureGroups = this.groupFailureResults(summary.failed || []);
+    const maxVisibleGroups = 30;
+
+    let message =
+      "分类完成：成功 " +
+      summary.success.length +
+      " 篇，失败 " +
+      summary.failed.length +
+      " 篇";
+
+    if (summary.researchTopic) {
+      message += "\n研究题目：" + this.compactMessage(summary.researchTopic, 120);
+    }
+
+    if (successGroups.length > 0) {
+      message += "\n\n成功归档：共 " + successGroups.length + " 类";
+      message += this.formatGroupedCounts(successGroups, maxVisibleGroups, "篇");
+    }
+
+    if (failureGroups.length > 0) {
+      message += "\n\n失败原因：共 " + failureGroups.length + " 类";
+      message += this.formatGroupedCounts(failureGroups, maxVisibleGroups, "篇");
+    }
+
+    return message;
+  },
+
+  groupSuccessResults: function (successEntries) {
+    const counts = Object.create(null);
+    for (const entry of successEntries) {
+      const key = (entry.collectionPath || entry.classification || "未命名分类").trim();
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  groupFailureResults: function (failedEntries) {
+    const counts = Object.create(null);
+    for (const entry of failedEntries) {
+      const message =
+        entry.error && entry.error.message
+          ? entry.error.message
+          : String(entry.error || "未知错误");
+      const key = this.compactMessage(message, 120);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return this.sortCountGroups(counts);
+  },
+
+  sortCountGroups: function (counts) {
+    return Object.keys(counts)
+      .map(function (name) {
+        return { name: name, count: counts[name] };
+      })
+      .sort(function (a, b) {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.name.localeCompare(b.name);
+      });
+  },
+
+  formatGroupedCounts: function (groups, maxVisibleGroups, unit) {
+    const visible = groups.slice(0, maxVisibleGroups);
+    let text = "";
+
+    visible.forEach(function (group, index) {
+      text += "\n" + (index + 1) + ". " + group.name + "： " + group.count + " " + unit;
+    });
+
+    if (groups.length > maxVisibleGroups) {
+      text += "\n... 还有 " + (groups.length - maxVisibleGroups) + " 类未显示";
+    }
+
+    return text;
+  },
+
+  compactMessage: function (message, maxLength) {
+    const normalized = String(message || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length <= maxLength) {
+      return normalized || "未知错误";
+    }
+    return normalized.slice(0, maxLength - 3) + "...";
+  },
+
+  promptForResearchTopic: function (win) {
+    const input = {
+      value: this.getGlobalPref("lastResearchTopic", "")
+    };
+    const checkState = { value: false };
+
+    const ok = Services.prompt.prompt(
+      win,
+      "Paper Classifier",
+      "请输入本次研究题目。插件将根据该题目判断每篇文献的主题作用并归档：",
+      input,
+      null,
+      checkState
+    );
+
+    if (!ok) {
+      return null;
+    }
+
+    const researchTopic = (input.value || "").trim();
+    if (!researchTopic) {
+      Services.prompt.alert(win, "Paper Classifier", "研究题目不能为空。");
+      return null;
+    }
+
+    this.setGlobalPref("lastResearchTopic", researchTopic);
+    return researchTopic;
+  },
+
   classifySelected: async function () {
     const win = Services.wm.getMostRecentWindow("navigator:browser");
     if (!win) {
@@ -419,35 +553,20 @@ var PaperClassifier = {
       return;
     }
 
+    const researchTopic = this.promptForResearchTopic(win);
+    if (!researchTopic) {
+      return;
+    }
+
     let summary;
     try {
-      summary = await processItems(items);
+      summary = await processItems(items, { researchTopic: researchTopic });
     } catch (error) {
       Services.prompt.alert(win, "Paper Classifier", "分类过程中发生错误：" + error.message);
       return;
     }
 
-    let message = "分类完成：成功 " + summary.success.length + " 篇，失败 " + summary.failed.length + " 篇";
-
-    if (summary.success.length > 0) {
-      message += "\n\n成功列表：\n";
-      summary.success.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(无标题)";
-        const location = entry.collectionPath || entry.classification;
-        message += (index + 1) + ". " + title + " -> " + location + "\n";
-      });
-    }
-
-    if (summary.failed.length > 0) {
-      message += "\n失败列表：\n";
-      summary.failed.forEach(function (entry, index) {
-        const title = entry.item.getField("title") || "(无标题)";
-        const errMsg = entry.error && entry.error.message ? entry.error.message : String(entry.error);
-        message += (index + 1) + ". " + title + " -> " + errMsg + "\n";
-      });
-    }
-
-    Services.prompt.alert(win, "Paper Classifier", message);
+    Services.prompt.alert(win, "Paper Classifier", this.buildCompletionMessage(summary));
   },
 
   openPreferences: function () {
